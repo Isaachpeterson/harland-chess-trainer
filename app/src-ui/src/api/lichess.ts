@@ -26,7 +26,7 @@ export interface SyncResult {
  */
 export async function syncGames(
   username: string,
-  maxGames: number
+  maxGames: number,
 ): Promise<SyncResult> {
   return invoke<SyncResult>("sync_games", {
     username,
