@@ -62,3 +62,36 @@ export async function analyzePendingGames(
     forceStockfish,
   });
 }
+
+/** Result of detecting mistakes in a single game. */
+export interface DetectMistakesResult {
+  game_id: string;
+  inaccuracies: number;
+  mistakes: number;
+  blunders: number;
+}
+
+/** Result of detecting mistakes across all analyzed games. */
+export interface DetectAllMistakesResult {
+  games_processed: number;
+  total_inaccuracies: number;
+  total_mistakes: number;
+  total_blunders: number;
+  errors: string[];
+}
+
+/**
+ * Runs blunder detection on a single game's stored evaluations.
+ */
+export async function detectMistakes(
+  gameId: string,
+): Promise<DetectMistakesResult> {
+  return invoke<DetectMistakesResult>("detect_mistakes", { gameId });
+}
+
+/**
+ * Runs blunder detection on all analyzed games.
+ */
+export async function detectAllMistakes(): Promise<DetectAllMistakesResult> {
+  return invoke<DetectAllMistakesResult>("detect_all_mistakes");
+}

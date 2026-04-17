@@ -39,3 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/ANALYSIS.md` describing the Lichess-first analysis strategy and eval conventions
 - 22 unit tests for PGN parsing and eval extraction, 5 integration tests for the analysis pipeline
 - 6 new storage tests for evaluation CRUD and analysis status tracking
+- `chess-core` mistake classification: `MistakeClassification` enum (`Inaccuracy`, `Mistake`, `Blunder`), `MistakeThresholds` struct with configurable 1600-level defaults
+- `classify_mistake()` function with mate score handling (±10,000cp sentinels, mate-to-mate same-side filtering), already-losing-position cap, and user perspective conversion
+- Property-based tests via `proptest` for classification monotonicity and symmetry
+- `storage` migration `0003_mistakes.sql`: `mistakes` table for detected blunders/mistakes/inaccuracies
+- `Storage::insert_mistakes`, `get_mistakes_for_game`, `list_blunders`, `mistake_count`, `list_analyzed_games`
+- Tauri command `detect_mistakes(game_id)`: per-game blunder detection from stored evaluations
+- Tauri command `detect_all_mistakes()`: batch blunder detection across all analyzed games
+- Typed frontend API wrappers for `detectMistakes` and `detectAllMistakes` in `analysis.ts`
+- `docs/ANALYSIS.md` updated with blunder classification rules, mate score handling, and already-losing cap
+- 24 unit tests for mistake classification edge cases, 4 proptest property-based tests, 8 storage tests for mistake CRUD

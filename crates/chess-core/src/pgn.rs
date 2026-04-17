@@ -95,8 +95,8 @@ pub fn parse_pgn(pgn: &str, user_color: &str) -> Result<Vec<ParsedMove>, ChessCo
                 let fen_after =
                     Fen::from_position(position.clone(), EnPassantMode::Legal).to_string();
 
-                let is_user = (ply % 2 == 0 && color == Color::White)
-                    || (ply % 2 == 1 && color == Color::Black);
+                let is_user = (ply.is_multiple_of(2) && color == Color::White)
+                    || (!ply.is_multiple_of(2) && color == Color::Black);
 
                 moves.push(ParsedMove {
                     ply,
@@ -139,7 +139,7 @@ fn extract_movetext(pgn: &str) -> String {
     pgn.lines()
         .filter(|line| {
             let trimmed = line.trim();
-            !trimmed.is_empty() && !(trimmed.starts_with('[') && trimmed.ends_with(']'))
+            !(trimmed.is_empty() || trimmed.starts_with('[') && trimmed.ends_with(']'))
         })
         .collect::<Vec<_>>()
         .join(" ")
@@ -156,7 +156,7 @@ fn tokenize_movetext(movetext: &str) -> Vec<Token> {
                 chars.next();
                 let mut comment = String::new();
                 let mut depth = 1u32;
-                while let Some(c) = chars.next() {
+                for c in chars.by_ref() {
                     if c == '{' {
                         depth += 1;
                         comment.push(c);

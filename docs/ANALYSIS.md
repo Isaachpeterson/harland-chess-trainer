@@ -120,3 +120,73 @@ CREATE TABLE move_evaluations (
 ```
 
 Ply indexing: ply 0 = evaluation after White's first move, ply 1 = after Black's first move, etc. This matches the Lichess analysis array convention.
+
+---
+
+## Blunder Detection (Slice 4)
+
+After evaluations are stored, the blunder detection pipeline classifies each of the user's moves by the centipawn drop from their perspective.
+
+### Classification thresholds (1600-level defaults)
+
+| Classification | Eval drop (cp) | v0.1 action |
+|---------------|----------------|-------------|
+| Inaccuracy | 50–99 | Stored, not turned into puzzles |
+| Mistake | 100–199 | Stored, not turned into puzzles in v0.1 |
+| Blunder | 200+ | Stored, becomes puzzle candidate in Slice 5 |
+
+Thresholds are configurable via `MistakeThresholds` and will be user-settable in the UI (Slice 7).
+
+### Drop calculation
+
+For each of the user's moves at ply P:
+
+1. `eval_before` = stored evaluation at ply P-1 (position after opponent's previous move), converted to the user's perspective.
+2. `eval_after` = stored evaluation at ply P (position after the user's move), converted to the user's perspective.
+3. `drop = eval_before - eval_after` (positive means the user's position got worse).
+4. Classify based on the drop and the active thresholds.
+
+The first move of the game (ply 0 for White, ply 1 for Black) is skipped if no prior evaluation exists.
+
+### Mate score handling
+
+- Mate scores are treated as ±10,000 centipawns for comparison purposes.
+- **Mate-to-mate same side:** if both `eval_before` and `eval_after` are mate scores favoring the same side (e.g., user has mate-in-3 → mate-in-5), the transition is **not** flagged. Going from "winning mate" to "longer winning mate" is not a meaningful mistake at the puzzle level.
+- **Mate-to-opposite or mate-to-cp:** transitioning from "user mates" to "opponent mates" or to a losing cp score **is** flagged (typically a blunder due to the enormous cp-equivalent drop).
+
+### Already-losing-position cap
+
+When the user's position is already significantly losing (`eval_before < -500cp` from user's perspective), a higher drop is required to classify as a blunder:
+
+- Effective blunder threshold = `blunder_cp + losing_extra_cp` (default: 200 + 100 = 300cp).
+- Inaccuracy and mistake thresholds are not affected.
+- Rationale: flagging every move in an already-lost position creates noise rather than instructive puzzles.
+
+### `best_move` field
+
+The `best_move` column in the `mistakes` table is empty in Slice 4. It will be populated in Slice 5 when the engine re-analyzes the pre-blunder position with multi-PV to generate puzzles and determine the engine's recommended move.
+
+### Database schema
+
+```sql
+CREATE TABLE mistakes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    ply INTEGER NOT NULL,
+    fen_before TEXT NOT NULL,
+    user_move TEXT NOT NULL,
+    best_move TEXT NOT NULL,
+    eval_before_cp INTEGER,
+    eval_before_mate INTEGER,
+    eval_after_cp INTEGER,
+    eval_after_mate INTEGER,
+    classification TEXT NOT NULL  -- 'inaccuracy' | 'mistake' | 'blunder'
+);
+```
+
+### Tauri commands
+
+| Command | Description |
+|---------|-------------|
+| `detect_mistakes(game_id)` | Detects mistakes in a single game. Returns `DetectMistakesResult`. |
+| `detect_all_mistakes()` | Detects mistakes in all analyzed games. Returns `DetectAllMistakesResult`. |

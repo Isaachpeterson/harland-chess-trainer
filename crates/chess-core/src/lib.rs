@@ -19,6 +19,10 @@ mod pgn;
 
 pub use pgn::{parse_pgn, ParsedMove, PgnEval};
 
+mod mistakes;
+
+pub use mistakes::{classify_mistake, MistakeClassification, MistakeThresholds};
+
 /// Errors from chess-core operations.
 #[derive(Debug, thiserror::Error)]
 pub enum ChessCoreError {

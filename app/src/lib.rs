@@ -38,6 +38,25 @@ pub struct AnalyzeBatchResult {
     pub errors: Vec<String>,
 }
 
+/// Result of detecting mistakes in a single game.
+#[derive(Debug, Clone, Serialize)]
+pub struct DetectMistakesResult {
+    pub game_id: String,
+    pub inaccuracies: u32,
+    pub mistakes: u32,
+    pub blunders: u32,
+}
+
+/// Result of detecting mistakes across all analyzed games.
+#[derive(Debug, Clone, Serialize)]
+pub struct DetectAllMistakesResult {
+    pub games_processed: u32,
+    pub total_inaccuracies: u32,
+    pub total_mistakes: u32,
+    pub total_blunders: u32,
+    pub errors: Vec<String>,
+}
+
 /// Progress event payload emitted during batch analysis.
 #[derive(Debug, Clone, Serialize)]
 pub struct AnalysisProgress {
@@ -435,6 +454,294 @@ async fn analyze_pending_games(
     })
 }
 
+/// Runs blunder detection on stored evaluations for a single game.
+///
+/// Reads per-move evaluations, classifies each user move using `chess_core::classify_mistake`,
+/// and persists detected mistakes.
+#[tauri::command]
+async fn detect_mistakes(
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+    game_id: String,
+) -> Result<DetectMistakesResult, String> {
+    let state_guard = state.lock().await;
+
+    // Load game
+    let game = state_guard
+        .storage
+        .get_game(&game_id)
+        .await
+        .map_err(|e| format!("failed to load game: {e}"))?
+        .ok_or_else(|| format!("game not found: {game_id}"))?;
+
+    // Load evaluations
+    let evals = state_guard
+        .storage
+        .get_evaluations(&game_id)
+        .await
+        .map_err(|e| format!("failed to load evaluations: {e}"))?;
+
+    if evals.is_empty() {
+        return Ok(DetectMistakesResult {
+            game_id,
+            inaccuracies: 0,
+            mistakes: 0,
+            blunders: 0,
+        });
+    }
+
+    // Parse PGN to get move data (fen_before, move_uci, is_user_move)
+    let parsed = chess_core::parse_pgn(&game.pgn, &game.user_color)
+        .map_err(|e| format!("PGN parse error: {e}"))?;
+
+    // Build an eval lookup by ply
+    let eval_by_ply: std::collections::HashMap<i32, &storage::MoveEvaluation> =
+        evals.iter().map(|e| (e.ply, e)).collect();
+
+    let user_is_white = game.user_color == "white";
+    let thresholds = chess_core::MistakeThresholds::default();
+
+    let mut mistake_inserts = Vec::new();
+    let mut inaccuracies = 0u32;
+    let mut mistake_count = 0u32;
+    let mut blunder_count = 0u32;
+
+    for mv in &parsed {
+        if !mv.is_user_move {
+            continue;
+        }
+
+        let ply = mv.ply as i32;
+
+        // eval_before: evaluation of the position before the user's move.
+        // This is the eval after the *previous* ply (opponent's move), stored at ply-1.
+        // For the very first move (ply 0 or ply 1), if no prior eval exists, skip.
+        let eval_before = if ply > 0 {
+            eval_by_ply.get(&(ply - 1))
+        } else {
+            // Ply 0 = White's first move. No prior eval to compare against.
+            None
+        };
+
+        let eval_after = eval_by_ply.get(&ply);
+
+        // Need both evals to classify
+        let (before, after) = match (eval_before, eval_after) {
+            (Some(b), Some(a)) => (b, a),
+            _ => continue,
+        };
+
+        let classification = chess_core::classify_mistake(
+            before.eval_cp,
+            before.eval_mate,
+            after.eval_cp,
+            after.eval_mate,
+            user_is_white,
+            &thresholds,
+        );
+
+        if let Some(class) = classification {
+            let class_str = match class {
+                chess_core::MistakeClassification::Inaccuracy => {
+                    inaccuracies += 1;
+                    "inaccuracy"
+                }
+                chess_core::MistakeClassification::Mistake => {
+                    mistake_count += 1;
+                    "mistake"
+                }
+                chess_core::MistakeClassification::Blunder => {
+                    blunder_count += 1;
+                    "blunder"
+                }
+            };
+
+            mistake_inserts.push(storage::MistakeInsert {
+                game_id: game_id.clone(),
+                ply,
+                fen_before: mv.fen_before.clone(),
+                user_move: mv.move_uci.clone(),
+                best_move: String::new(), // Populated in Slice 5 during puzzle generation
+                eval_before_cp: before.eval_cp,
+                eval_before_mate: before.eval_mate,
+                eval_after_cp: after.eval_cp,
+                eval_after_mate: after.eval_mate,
+                classification: class_str.to_owned(),
+            });
+        }
+    }
+
+    // Persist mistakes
+    state_guard
+        .storage
+        .insert_mistakes(&game_id, &mistake_inserts)
+        .await
+        .map_err(|e| format!("failed to store mistakes: {e}"))?;
+
+    Ok(DetectMistakesResult {
+        game_id,
+        inaccuracies,
+        mistakes: mistake_count,
+        blunders: blunder_count,
+    })
+}
+
+/// Runs blunder detection on all analyzed games.
+#[tauri::command]
+async fn detect_all_mistakes(
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<DetectAllMistakesResult, String> {
+    let game_ids: Vec<String> = {
+        let guard = state.lock().await;
+        guard
+            .storage
+            .list_analyzed_games()
+            .await
+            .map_err(|e| format!("failed to list analyzed games: {e}"))?
+            .into_iter()
+            .map(|g| g.id)
+            .collect()
+    };
+
+    let mut games_processed = 0u32;
+    let mut total_inaccuracies = 0u32;
+    let mut total_mistakes = 0u32;
+    let mut total_blunders = 0u32;
+    let mut errors = Vec::new();
+
+    for game_id in &game_ids {
+        // Re-acquire lock for each game to avoid holding it across long operations
+        let result = {
+            let state_guard = state.lock().await;
+
+            let game = match state_guard.storage.get_game(game_id).await {
+                Ok(Some(g)) => g,
+                Ok(None) => {
+                    errors.push(format!("game {game_id} not found"));
+                    continue;
+                }
+                Err(e) => {
+                    errors.push(format!("game {game_id}: {e}"));
+                    continue;
+                }
+            };
+
+            let evals = match state_guard.storage.get_evaluations(game_id).await {
+                Ok(e) => e,
+                Err(e) => {
+                    errors.push(format!("game {game_id}: failed to load evals: {e}"));
+                    continue;
+                }
+            };
+
+            if evals.is_empty() {
+                continue;
+            }
+
+            let parsed = match chess_core::parse_pgn(&game.pgn, &game.user_color) {
+                Ok(p) => p,
+                Err(e) => {
+                    errors.push(format!("game {game_id}: PGN parse error: {e}"));
+                    continue;
+                }
+            };
+
+            let eval_by_ply: std::collections::HashMap<i32, &storage::MoveEvaluation> =
+                evals.iter().map(|e| (e.ply, e)).collect();
+
+            let user_is_white = game.user_color == "white";
+            let thresholds = chess_core::MistakeThresholds::default();
+
+            let mut mistake_inserts = Vec::new();
+            let mut inacc = 0u32;
+            let mut mist = 0u32;
+            let mut blund = 0u32;
+
+            for mv in &parsed {
+                if !mv.is_user_move {
+                    continue;
+                }
+
+                let ply = mv.ply as i32;
+
+                let eval_before = if ply > 0 {
+                    eval_by_ply.get(&(ply - 1))
+                } else {
+                    None
+                };
+                let eval_after = eval_by_ply.get(&ply);
+
+                let (before, after) = match (eval_before, eval_after) {
+                    (Some(b), Some(a)) => (b, a),
+                    _ => continue,
+                };
+
+                let classification = chess_core::classify_mistake(
+                    before.eval_cp,
+                    before.eval_mate,
+                    after.eval_cp,
+                    after.eval_mate,
+                    user_is_white,
+                    &thresholds,
+                );
+
+                if let Some(class) = classification {
+                    let class_str = match class {
+                        chess_core::MistakeClassification::Inaccuracy => {
+                            inacc += 1;
+                            "inaccuracy"
+                        }
+                        chess_core::MistakeClassification::Mistake => {
+                            mist += 1;
+                            "mistake"
+                        }
+                        chess_core::MistakeClassification::Blunder => {
+                            blund += 1;
+                            "blunder"
+                        }
+                    };
+
+                    mistake_inserts.push(storage::MistakeInsert {
+                        game_id: game_id.clone(),
+                        ply,
+                        fen_before: mv.fen_before.clone(),
+                        user_move: mv.move_uci.clone(),
+                        best_move: String::new(),
+                        eval_before_cp: before.eval_cp,
+                        eval_before_mate: before.eval_mate,
+                        eval_after_cp: after.eval_cp,
+                        eval_after_mate: after.eval_mate,
+                        classification: class_str.to_owned(),
+                    });
+                }
+            }
+
+            if let Err(e) = state_guard
+                .storage
+                .insert_mistakes(game_id, &mistake_inserts)
+                .await
+            {
+                errors.push(format!("game {game_id}: failed to store mistakes: {e}"));
+                continue;
+            }
+
+            (inacc, mist, blund)
+        };
+
+        total_inaccuracies += result.0;
+        total_mistakes += result.1;
+        total_blunders += result.2;
+        games_processed += 1;
+    }
+
+    Ok(DetectAllMistakesResult {
+        games_processed,
+        total_inaccuracies,
+        total_mistakes,
+        total_blunders,
+        errors,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -453,7 +760,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             sync_games,
             analyze_game,
-            analyze_pending_games
+            analyze_pending_games,
+            detect_mistakes,
+            detect_all_mistakes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

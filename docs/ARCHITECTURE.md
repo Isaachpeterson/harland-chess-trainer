@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** Updated through Slice 3 — Game analysis pipeline.
+> **Status:** Updated through Slice 4 — Blunder detection.
 
 Harland Chess Trainer is a Tauri 2 desktop application organized as a Cargo workspace with multiple crates.
 
@@ -143,3 +143,45 @@ analyze_pending_games(force_stockfish)
 - **White-perspective normalization.** All stored evals are from White's POV. Stockfish scores are negated when the side to move was Black.
 - **Tauri event emission.** `analyze_pending_games` emits `analysis-progress` events for frontend progress tracking.
 - **Typed frontend API split.** Analysis wrappers live in `src-ui/src/api/analysis.ts`, separate from sync wrappers in `lichess.ts`.
+
+### Blunder detection (Slice 4)
+
+Slice 4 adds mistake classification as a pure-logic layer on top of stored evaluations.
+
+```
+detect_mistakes(game_id) / detect_all_mistakes()
+  │
+  ├─► Storage::get_game(game_id)
+  │     Load PGN + user_color
+  │
+  ├─► Storage::get_evaluations(game_id)
+  │     Per-ply eval_cp / eval_mate values
+  │
+  ├─► chess_core::parse_pgn(pgn, user_color)
+  │     → Vec<ParsedMove> (fen_before, move_uci, is_user_move)
+  │
+  ├─► For each user move at ply P:
+  │     eval_before = evaluations[ply P-1]  (position before user moved)
+  │     eval_after  = evaluations[ply P]    (position after user moved)
+  │     chess_core::classify_mistake(before, after, user_is_white, thresholds)
+  │       → None | Some(Inaccuracy | Mistake | Blunder)
+  │
+  └─► Storage::insert_mistakes(game_id, mistakes)
+        mistakes table (0003_mistakes.sql)
+```
+
+### chess-core crate (updated in Slice 4)
+
+Now includes the `mistakes` module alongside `pgn`:
+
+- **`MistakeClassification`** enum: `Inaccuracy`, `Mistake`, `Blunder` (ordered by severity).
+- **`MistakeThresholds`** struct with configurable cp drop thresholds, already-losing cap, and 1600-level defaults.
+- **`classify_mistake()`** — pure function handling mate scores (±10,000 cp sentinel), mate-to-mate same-side filtering, already-losing position cap, and standard threshold comparison.
+- Property-based tests via `proptest` verify monotonicity and symmetry of classification.
+
+### Key patterns (Slice 4)
+
+- **Pure logic, no I/O.** Blunder detection reads from storage and writes to storage; no engine or network calls.
+- **Eval-before / eval-after pairing.** `eval_before` = evaluation at ply P-1 (after opponent's move), `eval_after` = evaluation at ply P (after user's move). User perspective conversion handles Black/White differences.
+- **Idempotent re-detection.** `insert_mistakes` deletes existing mistakes for the game before inserting, so re-running is safe.
+- **`best_move` deferred.** The engine's recommended move is populated in Slice 5 during puzzle generation; stored as empty string in Slice 4.

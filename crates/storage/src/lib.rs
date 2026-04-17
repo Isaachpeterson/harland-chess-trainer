@@ -65,6 +65,37 @@ pub struct MoveEvaluation {
     pub source: String,
 }
 
+/// A detected mistake stored in the database.
+#[derive(Debug, Clone)]
+pub struct StoredMistake {
+    pub id: i64,
+    pub game_id: String,
+    pub ply: i32,
+    pub fen_before: String,
+    pub user_move: String,
+    pub best_move: String,
+    pub eval_before_cp: Option<i32>,
+    pub eval_before_mate: Option<i32>,
+    pub eval_after_cp: Option<i32>,
+    pub eval_after_mate: Option<i32>,
+    pub classification: String,
+}
+
+/// Input for inserting a mistake.
+#[derive(Debug, Clone)]
+pub struct MistakeInsert {
+    pub game_id: String,
+    pub ply: i32,
+    pub fen_before: String,
+    pub user_move: String,
+    pub best_move: String,
+    pub eval_before_cp: Option<i32>,
+    pub eval_before_mate: Option<i32>,
+    pub eval_after_cp: Option<i32>,
+    pub eval_after_mate: Option<i32>,
+    pub classification: String,
+}
+
 /// Errors from the storage layer.
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -101,6 +132,9 @@ impl Storage {
         sqlx::query(include_str!("../migrations/0002_evaluations.sql"))
             .execute(&pool)
             .await?;
+        sqlx::query(include_str!("../migrations/0003_mistakes.sql"))
+            .execute(&pool)
+            .await?;
 
         Ok(Self { pool })
     }
@@ -116,6 +150,9 @@ impl Storage {
             .execute(&pool)
             .await?;
         sqlx::query(include_str!("../migrations/0002_evaluations.sql"))
+            .execute(&pool)
+            .await?;
+        sqlx::query(include_str!("../migrations/0003_mistakes.sql"))
             .execute(&pool)
             .await?;
 
@@ -300,6 +337,148 @@ impl Storage {
         .await?;
 
         Ok(())
+    }
+
+    // -------------------------------------------------------------------
+    // Mistake methods (Slice 4)
+    // -------------------------------------------------------------------
+
+    /// Batch-inserts mistakes for a game, replacing any existing mistakes.
+    pub async fn insert_mistakes(
+        &self,
+        game_id: &str,
+        mistakes: &[MistakeInsert],
+    ) -> Result<(), StorageError> {
+        // Delete existing mistakes for this game so re-detection is idempotent
+        sqlx::query("DELETE FROM mistakes WHERE game_id = ?1")
+            .bind(game_id)
+            .execute(&self.pool)
+            .await?;
+
+        for m in mistakes {
+            sqlx::query(
+                "INSERT INTO mistakes (game_id, ply, fen_before, user_move, best_move, eval_before_cp, eval_before_mate, eval_after_cp, eval_after_mate, classification)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            )
+            .bind(&m.game_id)
+            .bind(m.ply)
+            .bind(&m.fen_before)
+            .bind(&m.user_move)
+            .bind(&m.best_move)
+            .bind(m.eval_before_cp)
+            .bind(m.eval_before_mate)
+            .bind(m.eval_after_cp)
+            .bind(m.eval_after_mate)
+            .bind(&m.classification)
+            .execute(&self.pool)
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Retrieves all mistakes for a specific game, ordered by ply.
+    pub async fn get_mistakes_for_game(
+        &self,
+        game_id: &str,
+    ) -> Result<Vec<StoredMistake>, StorageError> {
+        let rows = sqlx::query(
+            "SELECT id, game_id, ply, fen_before, user_move, best_move, eval_before_cp, eval_before_mate, eval_after_cp, eval_after_mate, classification
+             FROM mistakes WHERE game_id = ?1 ORDER BY ply",
+        )
+        .bind(game_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| StoredMistake {
+                id: r.get("id"),
+                game_id: r.get("game_id"),
+                ply: r.get("ply"),
+                fen_before: r.get("fen_before"),
+                user_move: r.get("user_move"),
+                best_move: r.get("best_move"),
+                eval_before_cp: r.get("eval_before_cp"),
+                eval_before_mate: r.get("eval_before_mate"),
+                eval_after_cp: r.get("eval_after_cp"),
+                eval_after_mate: r.get("eval_after_mate"),
+                classification: r.get("classification"),
+            })
+            .collect())
+    }
+
+    /// Lists blunders across all games, ordered by most recent game first.
+    pub async fn list_blunders(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<StoredMistake>, StorageError> {
+        let rows = sqlx::query(
+            "SELECT m.id, m.game_id, m.ply, m.fen_before, m.user_move, m.best_move,
+                    m.eval_before_cp, m.eval_before_mate, m.eval_after_cp, m.eval_after_mate,
+                    m.classification
+             FROM mistakes m
+             JOIN games g ON m.game_id = g.id
+             WHERE m.classification = 'blunder'
+             ORDER BY g.created_at DESC, m.ply ASC
+             LIMIT ?1 OFFSET ?2",
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| StoredMistake {
+                id: r.get("id"),
+                game_id: r.get("game_id"),
+                ply: r.get("ply"),
+                fen_before: r.get("fen_before"),
+                user_move: r.get("user_move"),
+                best_move: r.get("best_move"),
+                eval_before_cp: r.get("eval_before_cp"),
+                eval_before_mate: r.get("eval_before_mate"),
+                eval_after_cp: r.get("eval_after_cp"),
+                eval_after_mate: r.get("eval_after_mate"),
+                classification: r.get("classification"),
+            })
+            .collect())
+    }
+
+    /// Returns the count of mistakes for a game.
+    pub async fn mistake_count(&self, game_id: &str) -> Result<i64, StorageError> {
+        let row = sqlx::query("SELECT COUNT(*) as cnt FROM mistakes WHERE game_id = ?1")
+            .bind(game_id)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(row.get::<i64, _>("cnt"))
+    }
+
+    /// Lists all analyzed games (have `analysis_completed_at`).
+    pub async fn list_analyzed_games(&self) -> Result<Vec<StoredGame>, StorageError> {
+        let rows = sqlx::query(
+            "SELECT id, pgn, user_color, user_result, time_control, rated, created_at, analysis_source, analysis_completed_at
+             FROM games WHERE analysis_completed_at IS NOT NULL",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| StoredGame {
+                id: r.get("id"),
+                pgn: r.get("pgn"),
+                user_color: r.get("user_color"),
+                user_result: r.get("user_result"),
+                time_control: r.get("time_control"),
+                rated: r.get::<i32, _>("rated") != 0,
+                created_at: r.get("created_at"),
+                analysis_source: r.get("analysis_source"),
+                analysis_completed_at: r.get("analysis_completed_at"),
+            })
+            .collect())
     }
 
     /// Lists all games that have not been analyzed (no `analysis_completed_at`).
@@ -573,5 +752,146 @@ mod tests {
         let storage = Storage::new_in_memory().await.unwrap();
         let evals = storage.get_evaluations("nonexistent").await.unwrap();
         assert!(evals.is_empty());
+    }
+
+    // -------------------------------------------------------------------
+    // Mistake tests (Slice 4)
+    // -------------------------------------------------------------------
+
+    fn test_mistake(game_id: &str, ply: i32, classification: &str) -> MistakeInsert {
+        MistakeInsert {
+            game_id: game_id.to_owned(),
+            ply,
+            fen_before: format!("fen_at_ply_{ply}"),
+            user_move: "e7e5".to_owned(),
+            best_move: "d7d5".to_owned(),
+            eval_before_cp: Some(50),
+            eval_before_mate: None,
+            eval_after_cp: Some(-200),
+            eval_after_mate: None,
+            classification: classification.to_owned(),
+        }
+    }
+
+    #[tokio::test]
+    async fn insert_and_get_mistakes() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        insert_test_game(&storage, "mistake_test1").await;
+
+        let mistakes = vec![
+            test_mistake("mistake_test1", 4, "blunder"),
+            test_mistake("mistake_test1", 12, "mistake"),
+        ];
+
+        storage
+            .insert_mistakes("mistake_test1", &mistakes)
+            .await
+            .unwrap();
+
+        let stored = storage
+            .get_mistakes_for_game("mistake_test1")
+            .await
+            .unwrap();
+        assert_eq!(stored.len(), 2);
+        assert_eq!(stored[0].ply, 4);
+        assert_eq!(stored[0].classification, "blunder");
+        assert_eq!(stored[1].ply, 12);
+        assert_eq!(stored[1].classification, "mistake");
+    }
+
+    #[tokio::test]
+    async fn insert_mistakes_replaces_existing() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        insert_test_game(&storage, "mistake_replace").await;
+
+        let mistakes1 = vec![test_mistake("mistake_replace", 4, "blunder")];
+        storage
+            .insert_mistakes("mistake_replace", &mistakes1)
+            .await
+            .unwrap();
+
+        // Re-detect: replace with different result
+        let mistakes2 = vec![test_mistake("mistake_replace", 6, "mistake")];
+        storage
+            .insert_mistakes("mistake_replace", &mistakes2)
+            .await
+            .unwrap();
+
+        let stored = storage
+            .get_mistakes_for_game("mistake_replace")
+            .await
+            .unwrap();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].ply, 6);
+        assert_eq!(stored[0].classification, "mistake");
+    }
+
+    #[tokio::test]
+    async fn list_blunders_filters_by_classification() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        insert_test_game(&storage, "blunder_list").await;
+
+        let mistakes = vec![
+            test_mistake("blunder_list", 4, "blunder"),
+            test_mistake("blunder_list", 8, "mistake"),
+            test_mistake("blunder_list", 12, "inaccuracy"),
+            test_mistake("blunder_list", 16, "blunder"),
+        ];
+        storage
+            .insert_mistakes("blunder_list", &mistakes)
+            .await
+            .unwrap();
+
+        let blunders = storage.list_blunders(100, 0).await.unwrap();
+        assert_eq!(blunders.len(), 2);
+        assert!(blunders.iter().all(|b| b.classification == "blunder"));
+    }
+
+    #[tokio::test]
+    async fn list_blunders_pagination() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        insert_test_game(&storage, "blunder_page").await;
+
+        let mistakes = vec![
+            test_mistake("blunder_page", 2, "blunder"),
+            test_mistake("blunder_page", 4, "blunder"),
+            test_mistake("blunder_page", 6, "blunder"),
+        ];
+        storage
+            .insert_mistakes("blunder_page", &mistakes)
+            .await
+            .unwrap();
+
+        let page1 = storage.list_blunders(2, 0).await.unwrap();
+        assert_eq!(page1.len(), 2);
+
+        let page2 = storage.list_blunders(2, 2).await.unwrap();
+        assert_eq!(page2.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn mistake_count_works() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        insert_test_game(&storage, "mcount_test").await;
+
+        assert_eq!(storage.mistake_count("mcount_test").await.unwrap(), 0);
+
+        let mistakes = vec![
+            test_mistake("mcount_test", 4, "blunder"),
+            test_mistake("mcount_test", 8, "mistake"),
+        ];
+        storage
+            .insert_mistakes("mcount_test", &mistakes)
+            .await
+            .unwrap();
+
+        assert_eq!(storage.mistake_count("mcount_test").await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn get_mistakes_empty() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        let mistakes = storage.get_mistakes_for_game("nonexistent").await.unwrap();
+        assert!(mistakes.is_empty());
     }
 }

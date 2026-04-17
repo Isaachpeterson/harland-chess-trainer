@@ -8,3 +8,6 @@ license = "GPL-3.0-only"
 [dependencies]
 shakmaty = "0.27"
 thiserror = "2"
+
+[dev-dependencies]
+proptest = "1"

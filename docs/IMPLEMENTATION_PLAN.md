@@ -5,7 +5,7 @@
 > **This is a living document.** Update it as the project evolves. When a slice completes, mark it done and record notes. When reality diverges from the plan, rewrite the upcoming slices — don't force the plan onto the code.
 
 **Last updated:** project inception
-**Current slice:** Slice 4 — Blunder detection
+**Current slice:** Slice 5 — Puzzle generation
 **Target release:** v0.1
 
 ---
@@ -84,7 +84,7 @@ Concrete steps a human runs to confirm the slice works.
 | 1 | Lichess fetch + storage | Done (2026-04-17) | 0 |
 | 2 | Stockfish engine wrapper | Done (2026-04-17) | 0 |
 | 3 | Game analysis pipeline | Done (2026-04-17) | 1, 2 |
-| 4 | Blunder detection | Not started | 3 |
+| 4 | Blunder detection | Done (2026-04-17) | 3 |
 | 5 | Puzzle generation | Not started | 4 |
 | 6 | Puzzle attempt tracking | Not started | 5 |
 | 7 | Settings + Sync UI | Not started | 1 |
@@ -300,7 +300,7 @@ Completed 2026-04-17.
 
 ## Slice 4 — Blunder Detection
 
-**Status:** Not started
+**Status:** Done (2026-04-17)
 **Depends on:** 3
 **Estimated effort:** S
 
@@ -343,6 +343,19 @@ Identify the user's blunders from stored evaluations and persist them as structu
 1. Run classification on all stored games.
 2. Spot-check 3 flagged blunders manually: load the game in Lichess's analysis board and confirm the flagged move was indeed a blunder.
 3. Confirm that at least one known-good game (no blunders) produces zero mistakes.
+
+### Notes
+Completed 2026-04-17.
+
+- `classify_mistake` takes full eval fields (eval_cp, eval_mate for both before and after) plus a `user_is_white` flag, rather than the simpler `(eval_before_cp, eval_after_cp)` in the original spec. This was necessary to handle mate score edge cases properly.
+- Mate scores are mapped to ±10,000 cp sentinels for comparison. Mate-to-mate same-sign transitions (both winning or both losing) are filtered out before drop calculation.
+- Already-losing-position cap: when `eval_before < -500cp` (user's perspective), the blunder threshold increases by 100cp (configurable via `losing_extra_cp`). This only affects the blunder threshold, not inaccuracy/mistake.
+- `proptest` added as a dev-dependency for chess-core. Property-based tests verify: monotonicity of classification in eval drop, improving moves never classified, symmetric behavior for White/Black, zero drop never classified.
+- `best_move` column in the mistakes table is stored as empty string — populated in Slice 5 when the engine re-analyzes pre-blunder positions with multi-PV.
+- Thresholds currently use `MistakeThresholds::default()` in the Tauri commands. User-configurable settings table deferred to Slice 7 (settings UI).
+- Detection skips ply 0 for White (no prior eval) and ply 1 for Black (same reason). The very first move of the game cannot be evaluated without a starting-position eval.
+- `detect_all_mistakes` iterates over `list_analyzed_games()` (new storage method) rather than all games, ensuring only games with evaluations are processed.
+- `insert_mistakes` deletes existing mistakes for the game before inserting, making re-detection idempotent.
 
 ---
 
