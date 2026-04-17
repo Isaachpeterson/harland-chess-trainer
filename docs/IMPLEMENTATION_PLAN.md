@@ -5,7 +5,7 @@
 > **This is a living document.** Update it as the project evolves. When a slice completes, mark it done and record notes. When reality diverges from the plan, rewrite the upcoming slices — don't force the plan onto the code.
 
 **Last updated:** project inception
-**Current slice:** Slice 2 — Stockfish engine wrapper
+**Current slice:** Slice 3 — Game analysis pipeline
 **Target release:** v0.1
 
 ---
@@ -82,7 +82,7 @@ Concrete steps a human runs to confirm the slice works.
 |---|-------|--------|-----------|
 | 0 | Project scaffold | Done | — |
 | 1 | Lichess fetch + storage | Done (2026-04-17) | 0 |
-| 2 | Stockfish engine wrapper | Not started | 0 |
+| 2 | Stockfish engine wrapper | Done (2026-04-17) | 0 |
 | 3 | Game analysis pipeline | Not started | 1, 2 |
 | 4 | Blunder detection | Not started | 3 |
 | 5 | Puzzle generation | Not started | 4 |
@@ -188,7 +188,7 @@ Completed 2026-04-17.
 
 ## Slice 2 — Stockfish Engine Wrapper
 
-**Status:** Not started
+**Status:** Done (2026-04-17)
 **Depends on:** 0
 **Estimated effort:** M
 
@@ -222,6 +222,16 @@ Wrap a bundled Stockfish binary in an ergonomic async Rust API. Prove we can spa
 1. With Stockfish on PATH, run the integration tests: `STOCKFISH_PATH=stockfish cargo test -p engine -- --ignored`.
 2. All integration tests pass.
 3. Analyze a known position (e.g., `rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2`) and confirm `depth_reached >= 18` and a sane `score_cp` value.
+
+### Notes
+Completed 2026-04-17.
+
+- Dependencies added to engine crate: `thiserror 2`, `tokio 1` (process, io-util, time, sync features). Dev-dependency: `tokio` with macros + rt-multi-thread for `#[tokio::test]`.
+- UCI parsing lives in a separate `parse` module with pure functions, making it fully unit-testable without spawning Stockfish.
+- `Engine` uses `kill_on_drop(true)` on the child process as a safety net; `Drop` impl also calls `start_kill` if `shutdown()` wasn't called.
+- Multi-PV is set/reset per analysis call via `setoption name MultiPV value N`. Reset to 1 after each analysis to avoid state leakage between calls.
+- Info line parsing extracts the deepest result per PV index, discarding intermediate depths.
+- Integration tests require `STOCKFISH_PATH` env var (defaults to `stockfish` on PATH).
 
 ---
 

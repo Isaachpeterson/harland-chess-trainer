@@ -6,3 +6,8 @@ description = "Stockfish UCI process management and position analysis."
 license = "GPL-3.0-only"
 
 [dependencies]
+thiserror = "2"
+tokio = { version = "1", features = ["process", "io-util", "time", "sync"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["process", "io-util", "time", "sync", "macros", "rt-multi-thread"] }

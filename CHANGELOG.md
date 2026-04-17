@@ -21,3 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration tests for lichess-client (wiremock-based ndjson fixture tests, 429 retry, 404 handling)
 - Unit tests for storage (insert, upsert, get nonexistent)
 - `#[ignore]`-marked real Lichess API test
+- `engine` crate: async Stockfish UCI wrapper with `Engine::new`, `Engine::analyze`, and `Engine::shutdown`
+- UCI message parsing module (`engine::parse`) for `info` line extraction with multi-PV support
+- `EngineError` enum via thiserror (spawn failure, protocol violation, timeout, unexpected EOF, I/O)
+- `AnalyzeConfig` (depth, movetime, multipv) and `AnalysisResult` (best_move, score_cp, mate_in, depth, pv, multipv_results)
+- Mate score handling: distinguished from centipawn scores in `MultiPvLine`
+- 13 unit tests for UCI info line parsing and multi-PV extraction
+- 7 `#[ignore]`-marked integration tests requiring Stockfish binary (`STOCKFISH_PATH` env var)

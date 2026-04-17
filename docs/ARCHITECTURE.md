@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** Updated through Slice 1 — Lichess fetch + storage.
+> **Status:** Updated through Slice 2 — Stockfish engine wrapper.
 
 Harland Chess Trainer is a Tauri 2 desktop application organized as a Cargo workspace with multiple crates.
 
@@ -30,9 +30,11 @@ harland-chess-trainer/
 app (Tauri commands)
  ├── lichess-client   (reqwest, serde, tokio, futures, thiserror)
  └── storage          (sqlx + sqlite, tokio, thiserror, serde)
+
+engine                (tokio, thiserror)   [standalone, not yet wired into app]
 ```
 
-Other crates (`chess-core`, `engine`, `puzzle-gen`) are scaffolded but have no dependencies or code yet.
+Other crates (`chess-core`, `puzzle-gen`) are scaffolded but have no dependencies or code yet.
 
 ## Data flow (Slice 1: game sync)
 
@@ -62,3 +64,30 @@ SyncResult { fetched, new, updated } → frontend
 - **Typed frontend API.** `src-ui/src/api/lichess.ts` wraps `invoke` with TypeScript types. Components never call `invoke` directly.
 - **ndjson streaming.** Lichess returns games as newline-delimited JSON; the client parses the stream incrementally.
 - **Upsert semantics.** `Storage::insert_game` checks for existence and updates on conflict, preserving analysis fields.
+
+## Engine component (Slice 2)
+
+The `engine` crate wraps a Stockfish (or compatible UCI) child process in an async Rust API.
+
+```
+Engine::new(stockfish_path)
+  │  spawn process, capture stdin/stdout
+  │  send "uci" → wait for "uciok"
+  │  send "isready" → wait for "readyok"
+  ▼
+Engine::analyze(fen, config)
+  │  send "position fen {fen}"
+  │  send "go depth N" (or "go movetime M")
+  │  collect "info ..." lines until "bestmove ..."
+  │  parse info lines → MultiPvLine structs
+  ▼
+AnalysisResult { best_move, score_cp, mate_in, depth_reached, pv, multipv_results }
+```
+
+### Key patterns
+
+- **Async stdio.** Uses `tokio::process` with `BufReader` for non-blocking line reads.
+- **Timeout safety.** Every read has a 30-second timeout to avoid hangs.
+- **Graceful shutdown.** `Engine::shutdown()` sends `quit`; `Drop` impl calls `kill_on_drop` as fallback.
+- **Multi-PV support.** `AnalyzeConfig::multipv` sets the UCI `MultiPV` option; reset to 1 after each analysis.
+- **UCI parsing module.** `parse.rs` handles info line extraction as pure functions, fully unit-tested.
