@@ -27,7 +27,11 @@ fn stockfish_path() -> String {
 #[ignore]
 async fn engine_spawns_and_handshakes() {
     let engine = Engine::new(stockfish_path()).await;
-    assert!(engine.is_ok(), "Engine should spawn and handshake: {:?}", engine.err());
+    assert!(
+        engine.is_ok(),
+        "Engine should spawn and handshake: {:?}",
+        engine.err()
+    );
     let mut engine = engine.unwrap();
     engine.shutdown().await.expect("shutdown should succeed");
 }
@@ -54,7 +58,10 @@ async fn analyze_starting_position() {
         .expect("analysis should succeed");
 
     assert!(!result.best_move.is_empty(), "should have a best move");
-    assert!(result.score_cp.is_some(), "starting position should have a cp score");
+    assert!(
+        result.score_cp.is_some(),
+        "starting position should have a cp score"
+    );
     assert!(result.depth_reached >= 18, "should reach requested depth");
     assert!(!result.pv.is_empty(), "should have a principal variation");
 
@@ -78,7 +85,10 @@ async fn analyze_mate_in_one() {
         multipv: 1,
     };
 
-    let result = engine.analyze(fen, &config).await.expect("analysis should succeed");
+    let result = engine
+        .analyze(fen, &config)
+        .await
+        .expect("analysis should succeed");
 
     assert_eq!(result.best_move, "d1d8", "Rd8# is the only mate");
     assert_eq!(result.mate_in, Some(1), "should be mate in 1");
@@ -135,11 +145,21 @@ async fn analyze_known_position_depth_18() {
         multipv: 1,
     };
 
-    let result = engine.analyze(fen, &config).await.expect("analysis should succeed");
+    let result = engine
+        .analyze(fen, &config)
+        .await
+        .expect("analysis should succeed");
 
     assert!(!result.best_move.is_empty());
-    assert!(result.depth_reached >= 18, "depth should be >= 18, got {}", result.depth_reached);
-    assert!(result.score_cp.is_some(), "should have a cp score for this position");
+    assert!(
+        result.depth_reached >= 18,
+        "depth should be >= 18, got {}",
+        result.depth_reached
+    );
+    assert!(
+        result.score_cp.is_some(),
+        "should have a cp score for this position"
+    );
     // The position is roughly equal, score should be within a pawn
     let cp = result.score_cp.unwrap();
     assert!(
@@ -193,6 +213,12 @@ async fn shutdown_is_idempotent() {
         .await
         .expect("engine should spawn");
 
-    engine.shutdown().await.expect("first shutdown should succeed");
-    engine.shutdown().await.expect("second shutdown should succeed");
+    engine
+        .shutdown()
+        .await
+        .expect("first shutdown should succeed");
+    engine
+        .shutdown()
+        .await
+        .expect("second shutdown should succeed");
 }

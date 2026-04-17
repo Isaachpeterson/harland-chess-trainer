@@ -183,11 +183,7 @@ impl Engine {
         loop {
             let line = self.read_line().await?;
             if let Some(bm) = line.strip_prefix("bestmove ") {
-                best_move = bm
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("")
-                    .to_owned();
+                best_move = bm.split_whitespace().next().unwrap_or("").to_owned();
                 break;
             }
             if line.starts_with("info ") {
@@ -207,14 +203,7 @@ impl Engine {
         // Build result from PV1 (best line)
         let (score_cp, mate_in, depth_reached, pv) = multipv_lines
             .first()
-            .map(|line| {
-                (
-                    line.score_cp,
-                    line.mate_in,
-                    line.depth,
-                    line.pv.clone(),
-                )
-            })
+            .map(|line| (line.score_cp, line.mate_in, line.depth, line.pv.clone()))
             .unwrap_or((None, None, 0, Vec::new()));
 
         // Reset multi-PV to 1 after analysis
@@ -245,9 +234,7 @@ impl Engine {
 
     /// Sends a UCI command string (appends newline).
     async fn send_command(&mut self, cmd: &str) -> Result<(), EngineError> {
-        self.stdin
-            .write_all(format!("{cmd}\n").as_bytes())
-            .await?;
+        self.stdin.write_all(format!("{cmd}\n").as_bytes()).await?;
         self.stdin.flush().await?;
         Ok(())
     }

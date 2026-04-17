@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** Updated through Slice 2 — Stockfish engine wrapper.
+> **Status:** Updated through Slice 3 — Game analysis pipeline.
 
 Harland Chess Trainer is a Tauri 2 desktop application organized as a Cargo workspace with multiple crates.
 
@@ -10,7 +10,7 @@ Harland Chess Trainer is a Tauri 2 desktop application organized as a Cargo work
 harland-chess-trainer/
 ├── Cargo.toml              # workspace root
 ├── crates/
-│   ├── chess-core/          # pure chess logic, no I/O
+│   ├── chess-core/          # pure chess logic: PGN parsing, eval extraction
 │   ├── lichess-client/      # async Lichess API wrapper
 │   ├── engine/              # Stockfish UCI process management
 │   ├── puzzle-gen/          # puzzle generation from analyzed games
@@ -20,6 +20,8 @@ harland-chess-trainer/
 │   ├── src-ui/              # React + TypeScript frontend
 │   │   └── src/api/         # Typed invoke wrappers (frontend never calls invoke directly)
 │   └── tauri.conf.json
+├── docs/
+│   └── ANALYSIS.md          # analysis pipeline design (Lichess-first strategy)
 └── resources/
     └── stockfish/           # bundled Stockfish binaries per platform
 ```
@@ -27,14 +29,14 @@ harland-chess-trainer/
 ## Crate dependency graph
 
 ```
-app (Tauri commands)
+app (Tauri commands, orchestration)
+ ├── chess-core       (shakmaty, thiserror)
+ ├── engine           (tokio, thiserror)
  ├── lichess-client   (reqwest, serde, tokio, futures, thiserror)
  └── storage          (sqlx + sqlite, tokio, thiserror, serde)
-
-engine                (tokio, thiserror)   [standalone, not yet wired into app]
 ```
 
-Other crates (`chess-core`, `puzzle-gen`) are scaffolded but have no dependencies or code yet.
+Other crates (`puzzle-gen`) are scaffolded but have no dependencies or code yet.
 
 ## Data flow (Slice 1: game sync)
 
@@ -91,3 +93,53 @@ AnalysisResult { best_move, score_cp, mate_in, depth_reached, pv, multipv_result
 - **Graceful shutdown.** `Engine::shutdown()` sends `quit`; `Drop` impl calls `kill_on_drop` as fallback.
 - **Multi-PV support.** `AnalyzeConfig::multipv` sets the UCI `MultiPV` option; reset to 1 after each analysis.
 - **UCI parsing module.** `parse.rs` handles info line extraction as pure functions, fully unit-tested.
+
+## Analysis pipeline (Slice 3)
+
+Slice 3 ties `chess-core`, `engine`, and `storage` together in the app crate.
+
+### chess-core crate
+
+Now active. Depends on `shakmaty` for position representation and `thiserror` for errors.
+
+- **PGN parser** (`pgn` module): tokenizes PGN movetext, replays moves with `shakmaty::Chess`, extracts `[%eval ...]` comments from Lichess-annotated PGN.
+- Produces `Vec<ParsedMove>` with `fen_before`, `fen_after`, `move_uci`, `is_user_move`, and optional `lichess_eval`.
+
+### Data flow: Lichess-first analysis
+
+See [docs/ANALYSIS.md](ANALYSIS.md) for the full strategy.
+
+```
+analyze_game(game_id, force_stockfish)
+  │
+  ├─► Storage::get_game(game_id)
+  │     Load PGN + user_color
+  │
+  ├─► chess_core::parse_pgn(pgn, user_color)
+  │     → Vec<ParsedMove> with optional Lichess evals
+  │
+  ├─ Has %eval? ──► MoveEvaluation { source: "lichess" }
+  │
+  ├─ Missing? ──► Engine::analyze(fen_after, depth=20)
+  │               → convert score to White's perspective
+  │               → MoveEvaluation { source: "stockfish" }
+  │
+  ├─► Storage::insert_evaluations(game_id, evals)
+  │     move_evaluations table (0002_evaluations.sql)
+  │
+  └─► Storage::update_analysis_status(game_id, source)
+
+analyze_pending_games(force_stockfish)
+  │  Iterates over Storage::list_unanalyzed_games()
+  │  Calls analyze_game logic per game
+  │  Emits "analysis-progress" Tauri events
+  └─► AnalyzeBatchResult { games_analyzed, games_skipped, total_evals, errors }
+```
+
+### Key patterns (Slice 3)
+
+- **Lichess-first strategy.** Extract `%eval` from PGN first; only invoke Stockfish for missing plies.
+- **Lazy engine initialization.** The `Engine` is created on first use and cached in `AppState`.
+- **White-perspective normalization.** All stored evals are from White's POV. Stockfish scores are negated when the side to move was Black.
+- **Tauri event emission.** `analyze_pending_games` emits `analysis-progress` events for frontend progress tracking.
+- **Typed frontend API split.** Analysis wrappers live in `src-ui/src/api/analysis.ts`, separate from sync wrappers in `lichess.ts`.

@@ -28,3 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mate score handling: distinguished from centipawn scores in `MultiPvLine`
 - 13 unit tests for UCI info line parsing and multi-PV extraction
 - 7 `#[ignore]`-marked integration tests requiring Stockfish binary (`STOCKFISH_PATH` env var)
+- `chess-core` crate: PGN parser using `shakmaty` for position tracking and move validation
+- PGN `[%eval ...]` comment extraction (centipawn and mate score formats)
+- `ParsedMove` type with `fen_before`, `fen_after`, `move_uci`, `is_user_move`, and optional `lichess_eval`
+- `storage` migration `0002_evaluations.sql`: `move_evaluations` table for per-ply evaluations
+- `Storage::insert_evaluations`, `get_evaluations`, `evaluation_count`, `update_analysis_status`, `list_unanalyzed_games`
+- Tauri command `analyze_game(game_id, force_stockfish)`: Lichess-first eval extraction with Stockfish fallback
+- Tauri command `analyze_pending_games(force_stockfish)`: batch analysis with `analysis-progress` event emission
+- Typed frontend API wrapper (`src-ui/src/api/analysis.ts`) for analysis commands
+- `docs/ANALYSIS.md` describing the Lichess-first analysis strategy and eval conventions
+- 22 unit tests for PGN parsing and eval extraction, 5 integration tests for the analysis pipeline
+- 6 new storage tests for evaluation CRUD and analysis status tracking

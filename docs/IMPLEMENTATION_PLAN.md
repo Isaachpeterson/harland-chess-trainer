@@ -5,7 +5,7 @@
 > **This is a living document.** Update it as the project evolves. When a slice completes, mark it done and record notes. When reality diverges from the plan, rewrite the upcoming slices — don't force the plan onto the code.
 
 **Last updated:** project inception
-**Current slice:** Slice 3 — Game analysis pipeline
+**Current slice:** Slice 4 — Blunder detection
 **Target release:** v0.1
 
 ---
@@ -83,7 +83,7 @@ Concrete steps a human runs to confirm the slice works.
 | 0 | Project scaffold | Done | — |
 | 1 | Lichess fetch + storage | Done (2026-04-17) | 0 |
 | 2 | Stockfish engine wrapper | Done (2026-04-17) | 0 |
-| 3 | Game analysis pipeline | Not started | 1, 2 |
+| 3 | Game analysis pipeline | Done (2026-04-17) | 1, 2 |
 | 4 | Blunder detection | Not started | 3 |
 | 5 | Puzzle generation | Not started | 4 |
 | 6 | Puzzle attempt tracking | Not started | 5 |
@@ -282,6 +282,19 @@ For each stored game, produce per-move evaluations and persist them. Prefer Lich
 2. Confirm progress events fire to the frontend console.
 3. Query SQLite: `SELECT COUNT(*) FROM move_evaluations` — should be roughly (games × avg plies).
 4. Pick one game, confirm it has an evaluation for every ply and that the values look sane (no NULLs, no absurd values).
+
+### Notes
+Completed 2026-04-17.
+
+- `chess-core` now depends on `shakmaty 0.27` for position tracking and `thiserror 2` for errors.
+- PGN parsing is implemented manually (tokenizer + shakmaty move validation) rather than using `pgn-reader`, keeping dependencies minimal. Handles Lichess PGN format including `[%eval ...]` and `[%clk ...]` comments.
+- `ParsedMove` includes both `fen_before` and `fen_after` — `fen_after` is needed for Stockfish fallback analysis (engine evaluates the position resulting from each move).
+- Stockfish scores are normalized to White's perspective by negating when the side to move is Black (i.e., after even plies).
+- The `Engine` is lazily initialized in `AppState` on first use and reused across analysis calls. Resolved via `STOCKFISH_PATH` env var or `"stockfish"` on PATH.
+- `Storage::insert_evaluations` deletes existing evals for the game before inserting, making re-analysis idempotent.
+- `analyze_pending_games` emits `analysis-progress` Tauri events per game. Errors on individual games are collected but don't abort the batch.
+- Frontend typed API wrappers split into `lichess.ts` (sync) and `analysis.ts` (analysis commands).
+- Added `docs/ANALYSIS.md` describing the Lichess-first strategy, eval conventions, and data flow.
 
 ---
 

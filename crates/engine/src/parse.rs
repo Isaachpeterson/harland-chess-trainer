@@ -43,7 +43,9 @@ pub fn extract_final_pvs(info_lines: &[String], multipv: u32) -> Vec<MultiPvLine
     for line in info_lines {
         if let Some(parsed) = parse_info_line(line) {
             if parsed.pv_index <= multipv {
-                let entry = best.entry(parsed.pv_index).or_insert_with(|| parsed.clone());
+                let entry = best
+                    .entry(parsed.pv_index)
+                    .or_insert_with(|| parsed.clone());
                 // Keep the deepest line for each PV index
                 if parsed.depth >= entry.depth {
                     *entry = parsed;
@@ -83,10 +85,7 @@ fn extract_score(tokens: &[&str]) -> Option<(Option<i32>, Option<i32>)> {
 /// Extracts the PV moves from a UCI info line (everything after the `pv` token).
 fn extract_pv(tokens: &[&str]) -> Vec<String> {
     if let Some(pv_idx) = tokens.iter().position(|&t| t == "pv") {
-        tokens[pv_idx + 1..]
-            .iter()
-            .map(|&s| s.to_owned())
-            .collect()
+        tokens[pv_idx + 1..].iter().map(|&s| s.to_owned()).collect()
     } else {
         Vec::new()
     }
@@ -110,7 +109,8 @@ mod tests {
 
     #[test]
     fn parse_info_line_with_mate_score() {
-        let line = "info depth 15 seldepth 15 multipv 1 score mate 3 nodes 500000 pv d1h5 f7f6 h5f7";
+        let line =
+            "info depth 15 seldepth 15 multipv 1 score mate 3 nodes 500000 pv d1h5 f7f6 h5f7";
         let result = parse_info_line(line).expect("should parse");
         assert_eq!(result.score_cp, None);
         assert_eq!(result.mate_in, Some(3));
