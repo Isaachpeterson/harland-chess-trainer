@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "app",
+    "crates/chess-core",
+    "crates/lichess-client",
+    "crates/engine",
+    "crates/puzzle-gen",
+    "crates/storage",
+]

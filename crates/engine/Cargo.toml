@@ -1,0 +1,8 @@
+[package]
+name = "engine"
+version = "0.1.0"
+edition = "2021"
+description = "Stockfish UCI process management and position analysis."
+license = "GPL-3.0-only"
+
+[dependencies]

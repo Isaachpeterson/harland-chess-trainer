@@ -1,0 +1,18 @@
+[package]
+name = "lichess-client"
+version = "0.1.0"
+edition = "2021"
+description = "Async wrapper over the Lichess public API for fetching games and analysis."
+license = "GPL-3.0-only"
+
+[dependencies]
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+futures = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+wiremock = "0.6"

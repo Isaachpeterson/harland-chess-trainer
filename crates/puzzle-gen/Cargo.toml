@@ -1,0 +1,8 @@
+[package]
+name = "puzzle-gen"
+version = "0.1.0"
+edition = "2021"
+description = "Puzzle generation from analyzed chess games with quality filtering."
+license = "GPL-3.0-only"
+
+[dependencies]
