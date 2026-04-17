@@ -21,6 +21,9 @@ cd app/src-ui
 npm install
 cd ../..
 
+# Enable pre-commit hooks (runs cargo fmt --check before each commit)
+git config core.hooksPath .githooks
+
 # Run the development build
 cargo tauri dev --config app/tauri.conf.json
 ```
