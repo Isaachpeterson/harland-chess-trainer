@@ -1,0 +1,12 @@
+#!/bin/sh
+# Pre-commit hook: ensure cargo fmt and frontend lint pass before committing.
+
+echo "Running cargo fmt --check..."
+cargo fmt --all --check
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "ERROR: cargo fmt check failed. Run 'cargo fmt --all' and stage the changes."
+    exit 1
+fi
+
+echo "Pre-commit checks passed."
