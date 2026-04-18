@@ -237,7 +237,7 @@ Completed 2026-04-17.
 
 ## Slice 3 — Game Analysis Pipeline
 
-**Status:** Not started
+**Status:** Done (2026-04-17)
 **Depends on:** 1, 2
 **Estimated effort:** M
 
