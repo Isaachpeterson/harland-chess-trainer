@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** Updated through Slice 5 — Puzzle generation.
+> **Status:** Updated through Slice 6 — Puzzle attempt tracking.
 
 Harland Chess Trainer is a Tauri 2 desktop application organized as a Cargo workspace with multiple crates.
 
@@ -224,3 +224,33 @@ generate_puzzles()
 - **Pure filter functions.** `unique_best_move_gap` and `is_trivial_recapture` are pure functions in `puzzle-gen/src/filters.rs`, fully unit-testable.
 - **Mate score handling.** Mate scores mapped to ±10,000cp for eval gap calculation, consistent with chess-core.
 - **Idempotent.** `puzzle_exists_for_mistake` check prevents duplicate puzzles on re-runs.
+
+### Puzzle attempt tracking (Slice 6)
+
+Slice 6 adds the `puzzle_attempts` table and Tauri commands for recording and querying puzzle attempts.
+
+```
+get_next_puzzle()
+  │
+  └─► Storage::get_next_puzzle()
+        Prefers unattempted puzzles (random); falls back to random attempted
+        → Option<PuzzleResponse { id, fen, solution_moves }>
+
+submit_puzzle_attempt(puzzle_id, success, time_taken_ms, move_played)
+  │
+  └─► Storage::record_attempt(puzzle_id, success, time_taken_ms, move_played)
+        puzzle_attempts table (0005_attempts.sql)
+        → SubmitAttemptResult { attempt_id }
+
+get_attempts_summary()
+  │
+  └─► Storage::get_attempts_summary()
+        Aggregate: total attempts, success rate, puzzles attempted today
+        → AttemptsSummaryResponse
+```
+
+### Key patterns (Slice 6)
+
+- **Pure persistence slice.** No engine or network calls. Only reads/writes to SQLite.
+- **Unattempted-first selection.** `get_next_puzzle` prioritizes unseen puzzles for coverage, falling back to random when all are attempted.
+- **UTC day boundary.** "Puzzles attempted today" uses UTC midnight as the boundary for simplicity.

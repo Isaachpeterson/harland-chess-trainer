@@ -66,6 +66,30 @@ pub struct GeneratePuzzlesResult {
     pub errors: Vec<String>,
 }
 
+/// A puzzle returned to the frontend.
+#[derive(Debug, Clone, Serialize)]
+pub struct PuzzleResponse {
+    pub id: i64,
+    pub fen: String,
+    pub solution_moves: Vec<String>,
+}
+
+/// Result of submitting a puzzle attempt.
+#[derive(Debug, Clone, Serialize)]
+pub struct SubmitAttemptResult {
+    pub attempt_id: i64,
+}
+
+/// Aggregate puzzle attempt statistics.
+#[derive(Debug, Clone, Serialize)]
+pub struct AttemptsSummaryResponse {
+    pub total_attempts: i64,
+    pub total_successes: i64,
+    pub success_rate: f64,
+    pub puzzles_attempted: i64,
+    pub puzzles_attempted_today: i64,
+}
+
 /// Progress event payload emitted during batch analysis.
 #[derive(Debug, Clone, Serialize)]
 pub struct AnalysisProgress {
@@ -896,6 +920,70 @@ async fn generate_puzzles(
     })
 }
 
+/// Returns the next puzzle to solve. Prefers unattempted puzzles; falls back to
+/// already-attempted ones if all have been seen.
+#[tauri::command]
+async fn get_next_puzzle(
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<Option<PuzzleResponse>, String> {
+    let guard = state.lock().await;
+    let puzzle = guard
+        .storage
+        .get_next_puzzle()
+        .await
+        .map_err(|e| format!("failed to get next puzzle: {e}"))?;
+
+    Ok(puzzle.map(|p| {
+        let solution_moves: Vec<String> =
+            serde_json::from_str(&p.solution_moves).unwrap_or_default();
+        PuzzleResponse {
+            id: p.id,
+            fen: p.fen,
+            solution_moves,
+        }
+    }))
+}
+
+/// Records a puzzle attempt.
+#[tauri::command]
+async fn submit_puzzle_attempt(
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+    puzzle_id: i64,
+    success: bool,
+    time_taken_ms: i64,
+    move_played: String,
+) -> Result<SubmitAttemptResult, String> {
+    let guard = state.lock().await;
+    let attempt_id = guard
+        .storage
+        .record_attempt(puzzle_id, success, time_taken_ms, &move_played)
+        .await
+        .map_err(|e| format!("failed to record attempt: {e}"))?;
+
+    Ok(SubmitAttemptResult { attempt_id })
+}
+
+/// Returns aggregate puzzle attempt statistics.
+#[tauri::command]
+async fn get_attempts_summary(
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<AttemptsSummaryResponse, String> {
+    let guard = state.lock().await;
+    let summary = guard
+        .storage
+        .get_attempts_summary()
+        .await
+        .map_err(|e| format!("failed to get attempts summary: {e}"))?;
+
+    Ok(AttemptsSummaryResponse {
+        total_attempts: summary.total_attempts,
+        total_successes: summary.total_successes,
+        success_rate: summary.success_rate,
+        puzzles_attempted: summary.puzzles_attempted,
+        puzzles_attempted_today: summary.puzzles_attempted_today,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -917,7 +1005,10 @@ pub fn run() {
             analyze_pending_games,
             detect_mistakes,
             detect_all_mistakes,
-            generate_puzzles
+            generate_puzzles,
+            get_next_puzzle,
+            submit_puzzle_attempt,
+            get_attempts_summary
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

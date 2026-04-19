@@ -5,7 +5,7 @@
 > **This is a living document.** Update it as the project evolves. When a slice completes, mark it done and record notes. When reality diverges from the plan, rewrite the upcoming slices — don't force the plan onto the code.
 
 **Last updated:** project inception
-**Current slice:** Slice 6 — Puzzle attempt tracking
+**Current slice:** Slice 7 — Settings + Sync UI
 **Target release:** v0.1
 
 ---
@@ -86,7 +86,7 @@ Concrete steps a human runs to confirm the slice works.
 | 3 | Game analysis pipeline | Done (2026-04-17) | 1, 2 |
 | 4 | Blunder detection | Done (2026-04-17) | 3 |
 | 5 | Puzzle generation | Done (2026-04-18) | 4 |
-| 6 | Puzzle attempt tracking | Not started | 5 |
+| 6 | Puzzle attempt tracking | Done (2026-04-18) | 5 |
 | 7 | Settings + Sync UI | Not started | 1 |
 | 8 | Puzzle solving UI | Not started | 5, 6 |
 | 9 | Basic stats UI | Not started | 6 |
@@ -419,7 +419,7 @@ Completed 2026-04-18.
 
 ## Slice 6 — Puzzle Attempt Tracking
 
-**Status:** Not started
+**Status:** Done (2026-04-18)
 **Depends on:** 5
 **Estimated effort:** S
 
@@ -453,6 +453,13 @@ Record user attempts at solving puzzles, including correct/incorrect and time ta
 2. Call `get_next_puzzle` repeatedly — confirm it returns different puzzles.
 3. Submit attempts (some success, some failure) and confirm they persist.
 4. Call `get_attempts_summary` and confirm the numbers match what you submitted.
+
+### Notes
+- Pure persistence slice with no engine or network dependencies. All 8 new storage unit tests pass.
+- `get_next_puzzle` uses `ORDER BY RANDOM()` in SQLite for simplicity; sufficient for v0.1.
+- "Puzzles attempted today" uses UTC midnight boundary (`now - now % 86400`).
+- Tauri commands use `serde_json` to deserialize `solution_moves` JSON array into `Vec<String>` in `PuzzleResponse` for frontend convenience.
+- Frontend API wrappers added to existing `puzzles.ts` rather than a new file, keeping all puzzle-related calls together.
 
 ---
 

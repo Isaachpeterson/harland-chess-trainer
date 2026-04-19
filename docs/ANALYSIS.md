@@ -190,3 +190,43 @@ CREATE TABLE mistakes (
 |---------|-------------|
 | `detect_mistakes(game_id)` | Detects mistakes in a single game. Returns `DetectMistakesResult`. |
 | `detect_all_mistakes()` | Detects mistakes in all analyzed games. Returns `DetectAllMistakesResult`. |
+
+---
+
+## Puzzle Attempt Tracking (Slice 6)
+
+After puzzles are generated, the user solves them interactively. Each attempt is recorded for later statistics and (in v0.2) spaced repetition scheduling.
+
+### Database schema
+
+```sql
+CREATE TABLE puzzle_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    puzzle_id INTEGER NOT NULL REFERENCES puzzles(id) ON DELETE CASCADE,
+    attempted_at INTEGER NOT NULL,      -- unix timestamp
+    success INTEGER NOT NULL,           -- 0 or 1
+    time_taken_ms INTEGER NOT NULL,
+    move_played TEXT NOT NULL            -- what the user actually played (UCI)
+);
+```
+
+### Puzzle selection strategy (v0.1)
+
+`get_next_puzzle` returns a random **unattempted** puzzle first. If all puzzles have been attempted at least once, it falls back to a random already-attempted puzzle. This ensures the user always gets a puzzle when puzzles exist, while prioritizing unseen positions.
+
+### Aggregate statistics
+
+`get_attempts_summary` returns:
+- `total_attempts` — total number of puzzle attempts
+- `total_successes` — number of correct attempts
+- `success_rate` — `total_successes / total_attempts` (0.0 if no attempts)
+- `puzzles_attempted` — count of distinct puzzles attempted
+- `puzzles_attempted_today` — count of distinct puzzles attempted since UTC midnight
+
+### Tauri commands
+
+| Command | Description |
+|---------|-------------|
+| `get_next_puzzle()` | Returns the next puzzle to solve (unattempted first, then random). Returns `null` if no puzzles exist. |
+| `submit_puzzle_attempt(puzzle_id, success, time_taken_ms, move_played)` | Records a puzzle attempt. Returns `SubmitAttemptResult`. |
+| `get_attempts_summary()` | Returns aggregate attempt statistics. Returns `AttemptsSummaryResponse`. |

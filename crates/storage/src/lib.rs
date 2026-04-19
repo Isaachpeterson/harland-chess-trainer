@@ -116,6 +116,27 @@ pub struct PuzzleInsert {
     pub themes: Option<String>,
 }
 
+/// A stored puzzle attempt.
+#[derive(Debug, Clone)]
+pub struct StoredAttempt {
+    pub id: i64,
+    pub puzzle_id: i64,
+    pub attempted_at: i64,
+    pub success: bool,
+    pub time_taken_ms: i64,
+    pub move_played: String,
+}
+
+/// Aggregate statistics for puzzle attempts.
+#[derive(Debug, Clone)]
+pub struct AttemptsSummary {
+    pub total_attempts: i64,
+    pub total_successes: i64,
+    pub success_rate: f64,
+    pub puzzles_attempted: i64,
+    pub puzzles_attempted_today: i64,
+}
+
 /// Errors from the storage layer.
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -158,6 +179,9 @@ impl Storage {
         sqlx::query(include_str!("../migrations/0004_puzzles.sql"))
             .execute(&pool)
             .await?;
+        sqlx::query(include_str!("../migrations/0005_attempts.sql"))
+            .execute(&pool)
+            .await?;
 
         Ok(Self { pool })
     }
@@ -179,6 +203,9 @@ impl Storage {
             .execute(&pool)
             .await?;
         sqlx::query(include_str!("../migrations/0004_puzzles.sql"))
+            .execute(&pool)
+            .await?;
+        sqlx::query(include_str!("../migrations/0005_attempts.sql"))
             .execute(&pool)
             .await?;
 
@@ -615,6 +642,159 @@ impl Storage {
                 analysis_completed_at: r.get("analysis_completed_at"),
             })
             .collect())
+    }
+
+    // -------------------------------------------------------------------
+    // Puzzle attempt methods (Slice 6)
+    // -------------------------------------------------------------------
+
+    /// Records a puzzle attempt.
+    pub async fn record_attempt(
+        &self,
+        puzzle_id: i64,
+        success: bool,
+        time_taken_ms: i64,
+        move_played: &str,
+    ) -> Result<i64, StorageError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let result = sqlx::query(
+            "INSERT INTO puzzle_attempts (puzzle_id, attempted_at, success, time_taken_ms, move_played)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )
+        .bind(puzzle_id)
+        .bind(now)
+        .bind(success as i32)
+        .bind(time_taken_ms)
+        .bind(move_played)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.last_insert_rowid())
+    }
+
+    /// Retrieves all attempts for a specific puzzle, ordered by time.
+    pub async fn get_attempts_for_puzzle(
+        &self,
+        puzzle_id: i64,
+    ) -> Result<Vec<StoredAttempt>, StorageError> {
+        let rows = sqlx::query(
+            "SELECT id, puzzle_id, attempted_at, success, time_taken_ms, move_played
+             FROM puzzle_attempts WHERE puzzle_id = ?1 ORDER BY attempted_at",
+        )
+        .bind(puzzle_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| StoredAttempt {
+                id: r.get("id"),
+                puzzle_id: r.get("puzzle_id"),
+                attempted_at: r.get("attempted_at"),
+                success: r.get::<i32, _>("success") != 0,
+                time_taken_ms: r.get("time_taken_ms"),
+                move_played: r.get("move_played"),
+            })
+            .collect())
+    }
+
+    /// Returns aggregate statistics for puzzle attempts.
+    pub async fn get_attempts_summary(&self) -> Result<AttemptsSummary, StorageError> {
+        let row = sqlx::query(
+            "SELECT
+                COUNT(*) as total_attempts,
+                COALESCE(SUM(success), 0) as total_successes,
+                COUNT(DISTINCT puzzle_id) as puzzles_attempted
+             FROM puzzle_attempts",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        let total_attempts: i64 = row.get("total_attempts");
+        let total_successes: i64 = row.get("total_successes");
+        let puzzles_attempted: i64 = row.get("puzzles_attempted");
+
+        let success_rate = if total_attempts > 0 {
+            total_successes as f64 / total_attempts as f64
+        } else {
+            0.0
+        };
+
+        // Count distinct puzzles attempted today (UTC day boundary)
+        let today_start = {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+            now - (now % 86400)
+        };
+
+        let today_row = sqlx::query(
+            "SELECT COUNT(DISTINCT puzzle_id) as cnt
+             FROM puzzle_attempts WHERE attempted_at >= ?1",
+        )
+        .bind(today_start)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let puzzles_attempted_today: i64 = today_row.get("cnt");
+
+        Ok(AttemptsSummary {
+            total_attempts,
+            total_successes,
+            success_rate,
+            puzzles_attempted,
+            puzzles_attempted_today,
+        })
+    }
+
+    /// Returns a random unattempted puzzle, or a random already-attempted puzzle
+    /// if all puzzles have been seen. Returns `None` if there are no puzzles at all.
+    pub async fn get_next_puzzle(&self) -> Result<Option<StoredPuzzle>, StorageError> {
+        // Try unattempted puzzles first
+        let row = sqlx::query(
+            "SELECT p.id, p.mistake_id, p.fen, p.solution_moves, p.themes, p.created_at
+             FROM puzzles p
+             WHERE p.id NOT IN (SELECT DISTINCT puzzle_id FROM puzzle_attempts)
+             ORDER BY RANDOM()
+             LIMIT 1",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(r) = row {
+            return Ok(Some(StoredPuzzle {
+                id: r.get("id"),
+                mistake_id: r.get("mistake_id"),
+                fen: r.get("fen"),
+                solution_moves: r.get("solution_moves"),
+                themes: r.get("themes"),
+                created_at: r.get("created_at"),
+            }));
+        }
+
+        // Fall back to random already-attempted puzzle
+        let row = sqlx::query(
+            "SELECT id, mistake_id, fen, solution_moves, themes, created_at
+             FROM puzzles
+             ORDER BY RANDOM()
+             LIMIT 1",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| StoredPuzzle {
+            id: r.get("id"),
+            mistake_id: r.get("mistake_id"),
+            fen: r.get("fen"),
+            solution_moves: r.get("solution_moves"),
+            themes: r.get("themes"),
+            created_at: r.get("created_at"),
+        }))
     }
 }
 
@@ -1094,5 +1274,149 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(stored[0].best_move, "e2e4");
+    }
+
+    // -------------------------------------------------------------------
+    // Puzzle attempt tests (Slice 6)
+    // -------------------------------------------------------------------
+
+    /// Helper: insert a puzzle for attempt tests. Returns the puzzle ID.
+    async fn insert_test_puzzle(storage: &Storage, game_id: &str) -> i64 {
+        let mistake_id = insert_test_blunder(storage, game_id, 4).await;
+        let puzzle = PuzzleInsert {
+            mistake_id,
+            fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1".to_owned(),
+            solution_moves: r#"["d7d5"]"#.to_owned(),
+            themes: None,
+        };
+        storage.insert_puzzle(&puzzle).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn record_and_get_attempts() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        let puzzle_id = insert_test_puzzle(&storage, "attempt_test1").await;
+
+        let attempt_id = storage
+            .record_attempt(puzzle_id, true, 5000, "d7d5")
+            .await
+            .unwrap();
+        assert!(attempt_id > 0);
+
+        let attempts = storage.get_attempts_for_puzzle(puzzle_id).await.unwrap();
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(attempts[0].puzzle_id, puzzle_id);
+        assert!(attempts[0].success);
+        assert_eq!(attempts[0].time_taken_ms, 5000);
+        assert_eq!(attempts[0].move_played, "d7d5");
+    }
+
+    #[tokio::test]
+    async fn multiple_attempts_on_same_puzzle() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        let puzzle_id = insert_test_puzzle(&storage, "multi_attempt").await;
+
+        storage
+            .record_attempt(puzzle_id, false, 3000, "e7e5")
+            .await
+            .unwrap();
+        storage
+            .record_attempt(puzzle_id, true, 2000, "d7d5")
+            .await
+            .unwrap();
+
+        let attempts = storage.get_attempts_for_puzzle(puzzle_id).await.unwrap();
+        assert_eq!(attempts.len(), 2);
+        assert!(!attempts[0].success);
+        assert!(attempts[1].success);
+    }
+
+    #[tokio::test]
+    async fn get_attempts_empty() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        let puzzle_id = insert_test_puzzle(&storage, "empty_attempt").await;
+
+        let attempts = storage.get_attempts_for_puzzle(puzzle_id).await.unwrap();
+        assert!(attempts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_attempts_summary_empty() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        let summary = storage.get_attempts_summary().await.unwrap();
+        assert_eq!(summary.total_attempts, 0);
+        assert_eq!(summary.total_successes, 0);
+        assert_eq!(summary.success_rate, 0.0);
+        assert_eq!(summary.puzzles_attempted, 0);
+        assert_eq!(summary.puzzles_attempted_today, 0);
+    }
+
+    #[tokio::test]
+    async fn get_attempts_summary_with_data() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        let puzzle_id1 = insert_test_puzzle(&storage, "summary1").await;
+        let puzzle_id2 = insert_test_puzzle(&storage, "summary2").await;
+
+        storage
+            .record_attempt(puzzle_id1, true, 3000, "d7d5")
+            .await
+            .unwrap();
+        storage
+            .record_attempt(puzzle_id1, false, 4000, "e7e5")
+            .await
+            .unwrap();
+        storage
+            .record_attempt(puzzle_id2, true, 2000, "d7d5")
+            .await
+            .unwrap();
+
+        let summary = storage.get_attempts_summary().await.unwrap();
+        assert_eq!(summary.total_attempts, 3);
+        assert_eq!(summary.total_successes, 2);
+        assert!((summary.success_rate - 2.0 / 3.0).abs() < 0.001);
+        assert_eq!(summary.puzzles_attempted, 2);
+        // All attempts are "today" since we just recorded them
+        assert_eq!(summary.puzzles_attempted_today, 2);
+    }
+
+    #[tokio::test]
+    async fn get_next_puzzle_returns_unattempted_first() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        let puzzle_id1 = insert_test_puzzle(&storage, "next_test1").await;
+        let puzzle_id2 = insert_test_puzzle(&storage, "next_test2").await;
+
+        // Attempt puzzle 1
+        storage
+            .record_attempt(puzzle_id1, true, 3000, "d7d5")
+            .await
+            .unwrap();
+
+        // get_next_puzzle should return the unattempted puzzle (puzzle_id2)
+        let next = storage.get_next_puzzle().await.unwrap().unwrap();
+        assert_eq!(next.id, puzzle_id2);
+    }
+
+    #[tokio::test]
+    async fn get_next_puzzle_falls_back_when_all_attempted() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        let puzzle_id = insert_test_puzzle(&storage, "fallback_test").await;
+
+        // Attempt the only puzzle
+        storage
+            .record_attempt(puzzle_id, true, 3000, "d7d5")
+            .await
+            .unwrap();
+
+        // Should still return a puzzle (fallback to already-attempted)
+        let next = storage.get_next_puzzle().await.unwrap();
+        assert!(next.is_some());
+        assert_eq!(next.unwrap().id, puzzle_id);
+    }
+
+    #[tokio::test]
+    async fn get_next_puzzle_returns_none_when_no_puzzles() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        let next = storage.get_next_puzzle().await.unwrap();
+        assert!(next.is_none());
     }
 }

@@ -57,3 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Typed frontend API wrappers for `detectMistakes` and `detectAllMistakes` in `analysis.ts`
 - `docs/ANALYSIS.md` updated with blunder classification rules, mate score handling, and already-losing cap
 - 24 unit tests for mistake classification edge cases, 4 proptest property-based tests, 8 storage tests for mistake CRUD
+- `storage` migration `0005_attempts.sql`: `puzzle_attempts` table for tracking user puzzle solve attempts
+- `Storage::record_attempt`, `get_attempts_for_puzzle`, `get_attempts_summary`, `get_next_puzzle` (unattempted-first random selection with fallback)
+- `StoredAttempt` and `AttemptsSummary` types in storage crate
+- Tauri command `get_next_puzzle()`: returns next unseen puzzle (random unattempted, fallback to random attempted)
+- Tauri command `submit_puzzle_attempt(puzzle_id, success, time_taken_ms, move_played)`: records a puzzle attempt
+- Tauri command `get_attempts_summary()`: returns aggregate statistics (total attempts, success rate, puzzles attempted today)
+- Typed frontend API wrappers (`getNextPuzzle`, `submitPuzzleAttempt`, `getAttemptsSummary`) in `puzzles.ts`
+- `docs/ANALYSIS.md` updated with puzzle attempt tracking data model and selection strategy
+- 8 storage unit tests for attempt recording, retrieval, summary stats, and next-puzzle selection
