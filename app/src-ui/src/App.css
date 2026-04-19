@@ -464,4 +464,53 @@ button {
   .stat-label {
     color: #aaa;
   }
+
+  .about-licenses th {
+    border-bottom-color: #555;
+  }
+
+  .about-licenses td {
+    border-bottom-color: #333;
+  }
+}
+
+/* ---- About page ---- */
+.about-page {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.about-version {
+  color: #888;
+  margin-top: -0.5rem;
+}
+
+.about-author {
+  margin-bottom: 1.5rem;
+}
+
+.about-description {
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+.about-licenses {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.about-licenses th,
+.about-licenses td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+}
+
+.about-licenses th {
+  border-bottom: 2px solid #ddd;
+  font-weight: 600;
+}
+
+.about-licenses td {
+  border-bottom: 1px solid #eee;
 }

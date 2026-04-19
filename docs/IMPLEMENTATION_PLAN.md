@@ -5,7 +5,7 @@
 > **This is a living document.** Update it as the project evolves. When a slice completes, mark it done and record notes. When reality diverges from the plan, rewrite the upcoming slices — don't force the plan onto the code.
 
 **Last updated:** 2026-04-19
-**Current slice:** Slice 10 — v0.1 Release Prep
+**Current slice:** All v0.1 slices complete — ready for release tag
 **Target release:** v0.1
 
 ---
@@ -90,7 +90,7 @@ Concrete steps a human runs to confirm the slice works.
 | 7 | Settings + Sync UI | Done (2026-04-19) | 1 |
 | 8 | Puzzle solving UI | Done (2026-04-19) | 5, 6 |
 | 9 | Basic stats UI | Done (2026-04-19) | 6 |
-| 10 | v0.1 release prep | Not started | all prior |
+| 10 | v0.1 release prep | Done (2026-04-19) | all prior |
 
 Post-v0.1 slices are sketched at the end of this document but not yet broken into detail.
 
@@ -601,7 +601,7 @@ A minimal stats page so the user can see their progress. Not a dashboard — jus
 
 ## Slice 10 — v0.1 Release Prep
 
-**Status:** Not started
+**Status:** Done (2026-04-19)
 **Depends on:** all prior
 **Estimated effort:** M
 
@@ -633,6 +633,17 @@ Get the app into a shippable state. Bundle Stockfish, finalize CI release workfl
 1. On a machine that has never had this project, download the Windows installer from the GitHub release.
 2. Install. Launch. Enter Lichess username. Complete full sync + analyze. Solve puzzles.
 3. Uninstall cleanly.
+
+### Notes
+Completed 2026-04-19.
+
+- Used `bundle.resources` in `tauri.conf.json` rather than `externalBin` sidecar, since the engine crate spawns Stockfish via `tokio::process::Command` directly. `externalBin` would require the shell plugin or manual target-triple path resolution; `bundle.resources` is simpler — just copy the binary into a known subdirectory and resolve via `app.path().resource_dir()`.
+- `resolve_stockfish_path` now takes `&tauri::AppHandle` and checks three sources in priority order: `STOCKFISH_PATH` env var (dev), bundled resource dir (production), then system PATH (fallback). The resolved path is stored in `AppState` at startup.
+- Stockfish binaries are not committed to the repo (`.gitignore`d). The release CI workflow downloads Stockfish 17 per-platform from the official GitHub release.
+- About page uses a simple route (`/about`) with a static license/attribution table rather than a modal dialog. Keeps the UI simple and avoids adding a dialog component library.
+- CI now runs `npm run test` (Vitest) in the frontend job. Previously only type-checked.
+- README updated from a minimal stub to a full quickstart guide with SmartScreen warning for unsigned Windows binaries.
+- App metadata (`tauri.conf.json`, `Cargo.toml`) updated with proper descriptions, author, license, and copyright fields.
 
 ---
 

@@ -3,6 +3,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { SyncPage } from "./pages/SyncPage";
 import { PuzzlePage } from "./pages/PuzzlePage";
 import { StatsPage } from "./pages/StatsPage";
+import { AboutPage } from "./pages/AboutPage";
 import "./App.css";
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
             <NavLink to="/puzzles">Puzzles</NavLink>
             <NavLink to="/stats">Stats</NavLink>
             <NavLink to="/settings">Settings</NavLink>
+            <NavLink to="/about">About</NavLink>
           </div>
         </nav>
         <main className="app-main">
@@ -26,6 +28,7 @@ function App() {
             <Route path="/puzzles" element={<PuzzlePage />} />
             <Route path="/stats" element={<StatsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/about" element={<AboutPage />} />
           </Routes>
         </main>
       </div>

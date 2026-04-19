@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** Updated through Slice 8 — Puzzle Solving UI.
+> **Status:** Updated through Slice 10 — v0.1 Release Prep.
 
 Harland Chess Trainer is a Tauri 2 desktop application organized as a Cargo workspace with multiple crates.
 
@@ -447,3 +447,63 @@ StatsPage mount
   │
   └─► renders four StatCard components with formatted values
 ```
+
+---
+
+### Slice 10 — v0.1 Release Prep
+
+Slice 10 prepares the application for its first release by bundling the Stockfish engine, finalizing CI/CD, and adding user-facing documentation and attribution.
+
+#### Stockfish bundling
+
+```
+resources/stockfish/
+  README.md       # documents expected binary names
+  COPYING         # Stockfish GPL-3.0 license notice
+  stockfish[.exe] # downloaded by CI, not committed (in .gitignore)
+```
+
+`tauri.conf.json` maps `resources/stockfish/*` → `stockfish/` in the bundle via `bundle.resources`. At runtime, Tauri copies these files into the platform's resource directory.
+
+#### Runtime Stockfish resolution
+
+```
+resolve_stockfish_path(app: &AppHandle)
+  │
+  ├─ 1. STOCKFISH_PATH env var? → use it (dev override)
+  │
+  ├─ 2. app.path().resource_dir()/stockfish/stockfish[.exe] exists? → use it (production)
+  │
+  └─ 3. Fall back to "stockfish" on system PATH
+```
+
+The resolved path is stored in `AppState.stockfish_path` during app setup and used by `ensure_engine()`.
+
+#### Release CI (`release.yml`)
+
+```
+Matrix: ubuntu-latest, macos-latest, windows-latest
+  │
+  ├─ Download Stockfish binary from official GitHub release
+  │   → placed in resources/stockfish/stockfish[.exe]
+  │
+  ├─ npm install (frontend)
+  │
+  └─ tauri-apps/tauri-action → build + draft GitHub release with artifacts
+```
+
+#### About page
+
+New route `/about` → `AboutPage` showing app version, author, GPL-3.0 license info, and a table of third-party libraries with their licenses and source links.
+
+#### Routing (final v0.1)
+
+```
+/         → SyncPage
+/puzzles  → PuzzlePage
+/stats    → StatsPage
+/settings → SettingsPage
+/about    → AboutPage
+```
+
+Nav bar: Sync | Puzzles | Stats | Settings | About

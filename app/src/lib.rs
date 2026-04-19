@@ -125,14 +125,15 @@ pub struct FullSyncResult {
 struct AppState {
     storage: storage::Storage,
     engine: Option<engine::Engine>,
+    stockfish_path: String,
 }
 
 impl AppState {
     /// Lazily initializes the Stockfish engine if not already running.
     async fn ensure_engine(&mut self) -> Result<&mut engine::Engine, String> {
         if self.engine.is_none() {
-            let path = resolve_stockfish_path();
-            let eng = engine::Engine::new(&path)
+            let path = &self.stockfish_path;
+            let eng = engine::Engine::new(path)
                 .await
                 .map_err(|e| format!("failed to start Stockfish at '{path}': {e}"))?;
             self.engine = Some(eng);
@@ -152,9 +153,33 @@ fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(data_dir.join("harland.db"))
 }
 
-/// Resolves the Stockfish binary path from env var or falls back to "stockfish" on PATH.
-fn resolve_stockfish_path() -> String {
-    std::env::var("STOCKFISH_PATH").unwrap_or_else(|_| "stockfish".to_owned())
+/// Resolves the Stockfish binary path.
+///
+/// Priority:
+/// 1. `STOCKFISH_PATH` environment variable (dev override)
+/// 2. Bundled binary in Tauri's resource directory
+/// 3. `"stockfish"` on the system PATH
+fn resolve_stockfish_path(app: &tauri::AppHandle) -> String {
+    // 1. Dev override via env var
+    if let Ok(path) = std::env::var("STOCKFISH_PATH") {
+        return path;
+    }
+
+    // 2. Bundled resource
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let stockfish_name = if cfg!(target_os = "windows") {
+            "stockfish.exe"
+        } else {
+            "stockfish"
+        };
+        let bundled = resource_dir.join("stockfish").join(stockfish_name);
+        if bundled.exists() {
+            return bundled.to_string_lossy().into_owned();
+        }
+    }
+
+    // 3. Fall back to PATH
+    "stockfish".to_owned()
 }
 
 /// Fetches games from Lichess for the given username and stores them in the local database.
@@ -1477,9 +1502,12 @@ pub fn run() {
             let storage = tauri::async_runtime::block_on(storage::Storage::new(&path))
                 .map_err(|e| format!("failed to initialize database: {e}"))?;
 
+            let stockfish_path = resolve_stockfish_path(app.handle());
+
             app.manage(Arc::new(Mutex::new(AppState {
                 storage,
                 engine: None,
+                stockfish_path,
             })));
             Ok(())
         })

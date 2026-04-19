@@ -43,3 +43,7 @@ lerna-debug.log*
 
 # Mutation testing
 **/mutants.out*/
+
+# Stockfish binaries (downloaded by CI, not committed)
+resources/stockfish/stockfish
+resources/stockfish/stockfish.exe

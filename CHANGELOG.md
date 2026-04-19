@@ -92,6 +92,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 6 Vitest unit tests for `formatSuccessRate` in `__tests__/statsPage.test.ts`
 - Route `/stats` → `StatsPage`; nav bar updated: Sync | Puzzles | Stats | Settings
 - Stats-page styles: two-column stat card grid, dark-mode support
+- **Slice 10 — v0.1 Release Prep:**
+- Stockfish binary bundling via Tauri `bundle.resources` — CI downloads per-platform Stockfish binaries before building
+- Runtime Stockfish path resolution: checks `STOCKFISH_PATH` env var → bundled resource dir → system PATH
+- About page (`/about`) with version, author, license, and third-party attribution table
+- Release workflow (`release.yml`) downloads Stockfish 17 for each platform matrix entry
+- CI workflow (`ci.yml`) now runs `npm run test` (Vitest) in frontend checks
+- Stockfish COPYING file in `resources/stockfish/`
+- `tauri.conf.json`: proper window title, bundle metadata (descriptions, homepage, license, copyright)
+- `app/Cargo.toml`: updated description and author
+- README: quickstart guide, Windows SmartScreen warning, feature list, dev setup instructions
+- Route `/about` → `AboutPage`; nav bar updated: Sync | Puzzles | Stats | Settings | About
 
 ### Fixed
 
