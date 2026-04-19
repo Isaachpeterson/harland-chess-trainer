@@ -55,11 +55,7 @@ export function SyncPage() {
         before syncing.
       </p>
 
-      <button
-        onClick={handleSync}
-        disabled={isRunning}
-        className="primary-btn"
-      >
+      <button onClick={handleSync} disabled={isRunning} className="primary-btn">
         {isRunning ? "Running…" : "Fetch & Analyze"}
       </button>
 

@@ -38,4 +38,3 @@ export default defineConfig(async () => ({
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
   },
 }));
-

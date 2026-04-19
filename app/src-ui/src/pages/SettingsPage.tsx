@@ -41,7 +41,10 @@ export function SettingsPage() {
     }
   }
 
-  function update<K extends keyof UserSettings>(key: K, value: UserSettings[K]) {
+  function update<K extends keyof UserSettings>(
+    key: K,
+    value: UserSettings[K],
+  ) {
     setSettings((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -61,7 +64,9 @@ export function SettingsPage() {
             <input
               type="text"
               value={settings.lichess_username}
-              onChange={(e) => update("lichess_username", e.currentTarget.value.trim())}
+              onChange={(e) =>
+                update("lichess_username", e.currentTarget.value.trim())
+              }
               placeholder="e.g. Isaachpeterson"
               autoComplete="off"
               spellCheck={false}
@@ -74,12 +79,16 @@ export function SettingsPage() {
             <input
               type="number"
               value={settings.max_games}
-              onChange={(e) => update("max_games", Number(e.currentTarget.value))}
+              onChange={(e) =>
+                update("max_games", Number(e.currentTarget.value))
+              }
               min={1}
               max={300}
               disabled={saving}
             />
-            <span className="hint">Maximum recent games to fetch per sync (1–300)</span>
+            <span className="hint">
+              Maximum recent games to fetch per sync (1–300)
+            </span>
           </label>
         </fieldset>
 
@@ -95,8 +104,8 @@ export function SettingsPage() {
             />
             Always use local Stockfish
             <span className="hint">
-              Slower but consistent. By default, Lichess embedded evals are used when
-              available.
+              Slower but consistent. By default, Lichess embedded evals are used
+              when available.
             </span>
           </label>
         </fieldset>
