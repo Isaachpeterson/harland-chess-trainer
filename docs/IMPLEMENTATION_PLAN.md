@@ -5,7 +5,7 @@
 > **This is a living document.** Update it as the project evolves. When a slice completes, mark it done and record notes. When reality diverges from the plan, rewrite the upcoming slices — don't force the plan onto the code.
 
 **Last updated:** project inception
-**Current slice:** Slice 8 — Puzzle Solving UI
+**Current slice:** Slice 9 — Basic Stats UI
 **Target release:** v0.1
 
 ---
@@ -87,8 +87,8 @@ Concrete steps a human runs to confirm the slice works.
 | 4 | Blunder detection | Done (2026-04-17) | 3 |
 | 5 | Puzzle generation | Done (2026-04-18) | 4 |
 | 6 | Puzzle attempt tracking | Done (2026-04-18) | 5 |
-| 7 | Settings + Sync UI | Not started | 1 |
-| 8 | Puzzle solving UI | Not started | 5, 6 |
+| 7 | Settings + Sync UI | Done (2026-04-19) | 1 |
+| 8 | Puzzle solving UI | Done (2026-04-19) | 5, 6 |
 | 9 | Basic stats UI | Not started | 6 |
 | 10 | v0.1 release prep | Not started | all prior |
 
@@ -514,7 +514,7 @@ First real UI slice. Lets the user enter their Lichess username, configure basic
 
 ## Slice 8 — Puzzle Solving UI
 
-**Status:** Not started
+**Status:** Done (2026-04-19)
 **Depends on:** 5, 6
 **Estimated effort:** L
 
@@ -549,6 +549,22 @@ The thing the user actually came here for. Present a puzzle on a chessground boa
 2. Load another puzzle. Play an incorrect move — confirm failure feedback and that the correct move is shown afterward.
 3. Confirm attempts are recorded in the database.
 4. Solve 10 puzzles in a row, keyboard-navigating. No jank, no crashes.
+
+### Notes
+
+Completed 2026-04-19.
+
+- `chessground` 9.2.1 installed (shows npm deprecation warning but is the latest and final version; the package works correctly). `chess.js` 1.4.0 for client-side move validation.
+- `PuzzleBoard` component manages chessground lifecycle via React refs: `Chessground()` called once on mount, `Api.set()` on prop changes, `Api.destroy()` on unmount. A stable callback ref pattern prevents chessground event handler re-binding on every render.
+- Board orientation derived from FEN's side-to-move field: the user always plays as the side to move in the puzzle position.
+- Promotion defaults to queen. `matchesSolutionMove()` normalizes queen promotions for comparison (`e7e8q` ≡ `e7e8`). Under-promotion puzzles would need a promotion picker UI (deferred, very rare in practice due to quality filters).
+- Incorrect answer flow: SAN of the correct move shown immediately, then the correct move animated onto the board after 800ms delay for visual clarity.
+- Keyboard shortcut: Spacebar loads next puzzle when in correct/incorrect/empty state. Disabled during solving to avoid accidental skips.
+- `legalDests()` and `orientationFromFen()` extracted as pure functions into `PuzzleBoard.tsx` for testability. `matchesSolutionMove()` and `formatSolutionDisplay()` extracted from `PuzzlePage.tsx` similarly.
+- 18 new Vitest tests cover all pure utility functions (no Tauri mock needed). Total frontend tests: 29.
+- No backend changes needed — Slice 6's `get_next_puzzle` and `submit_puzzle_attempt` commands are used as-is.
+- chessground CSS (base + brown theme + cburnett pieces) imported in `main.tsx`. Board sized via CSS `aspect-ratio: 1/1` on the container div.
+- Route `/puzzles` added with nav link between Sync and Settings.
 
 ---
 

@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** Updated through Slice 7 — Settings + Sync UI.
+> **Status:** Updated through Slice 8 — Puzzle Solving UI.
 
 Harland Chess Trainer is a Tauri 2 desktop application organized as a Cargo workspace with multiple crates.
 
@@ -329,3 +329,77 @@ src-ui/src/
 - **Pure utils extracted for testability.** `syncStages.ts` contains only pure functions, making them unit-testable without mocking the Tauri `listen` API.
 - **Vitest with jsdom.** Frontend tests use `vitest/config`, `jsdom` environment, and `@testing-library/jest-dom` matchers.
 - **chessground license correction.** Previously documented as MIT; corrected to GPL-3.0 in README and copilot-instructions.md. License is compatible with this project.
+
+### Puzzle solving UI (Slice 8)
+
+Slice 8 adds the core user-facing feature: an interactive puzzle board where the user solves blunder-derived puzzles.
+
+#### New frontend dependencies
+
+- **chessground** (GPL-3.0) — chess board rendering, drag-and-drop, highlighting.
+- **chess.js** (BSD-2-Clause) — client-side move validation and legal move generation.
+
+#### Component structure
+
+```
+PuzzlePage (src/pages/PuzzlePage.tsx)
+  │  State machine: loading → solving → correct/incorrect → (next puzzle)
+  │  Keyboard: Spacebar = next puzzle
+  │  Timer: tracks attempt duration for submitPuzzleAttempt()
+  │
+  └── PuzzleBoard (src/components/PuzzleBoard.tsx)
+        │  React wrapper around a chessground instance
+        │  Props: fen, orientation, dests, onMove, interactive, lastMove, check
+        │  Lifecycle: init on mount, Api.set() on prop change, destroy on unmount
+        │
+        └── Chessground (chessground library)
+              Board rendering, piece drag/click, animation
+```
+
+#### Frontend file layout (Slice 8 additions)
+
+```
+src-ui/src/
+  components/
+    PuzzleBoard.tsx       # chessground wrapper, legalDests(), orientationFromFen()
+  pages/
+    PuzzlePage.tsx        # puzzle solving page with state machine + attempt recording
+  __tests__/
+    puzzleBoard.test.ts   # 6 tests for legalDests, orientationFromFen
+    puzzlePage.test.ts    # 12 tests for matchesSolutionMove, formatSolutionDisplay
+```
+
+#### Routing update
+
+New route added: `/puzzles` → `PuzzlePage`. Nav bar now shows Sync | Puzzles | Settings.
+
+#### Data flow: puzzle solving
+
+```
+PuzzlePage mount
+  │
+  └─► getNextPuzzle() → Tauri invoke → Storage::get_next_puzzle()
+        → PuzzleResponse { id, fen, solution_moves }
+  │
+  ├─► orientationFromFen(fen) → board orientation (side to move)
+  ├─► legalDests(fen) via chess.js → Map<Key, Key[]> for chessground
+  │
+  User makes a move (drag or click)
+  │
+  ├─► chess.js validates move, produces resulting FEN
+  ├─► UCI move compared to solution_moves[0] (with promotion normalization)
+  │
+  ├─ Correct? → green feedback, record attempt (success=true)
+  └─ Incorrect? → red feedback, show SAN of correct move, animate solution
+       → record attempt (success=false)
+  │
+  └─► submitPuzzleAttempt(puzzle_id, success, time_ms, move_played)
+        → Tauri invoke → Storage::record_attempt()
+```
+
+#### Key patterns (Slice 8)
+
+- **chessground as a controlled component.** `PuzzleBoard` receives all display state as props and forwards them to chessground via `Api.set()`. No chessground state is read back; React owns the state.
+- **Stable callback refs.** `onMove` uses a ref-based pattern to avoid re-binding chessground's event handler on every render.
+- **Pure utility functions exported for testing.** `legalDests`, `orientationFromFen`, `matchesSolutionMove`, `formatSolutionDisplay` are all pure and tested without DOM or Tauri mocks.
+- **Default queen promotion.** Simplifies the UI while covering 99%+ of real puzzle solutions. Promotion normalization in `matchesSolutionMove` ensures `e7e8q` and `e7e8` are treated as equivalent.

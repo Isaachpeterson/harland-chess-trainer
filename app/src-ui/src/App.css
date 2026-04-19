@@ -288,6 +288,93 @@ button {
   margin-right: 5px;
 }
 
+/* ── Puzzle page ────────────────────────────────────────────── */
+.puzzle-page {
+  max-width: 720px;
+}
+
+.puzzle-board-container {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto 1rem;
+}
+
+/* chessground needs a sized container; aspect-ratio keeps it square */
+.puzzle-board {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+/* Override chessground wrapper to fill its container */
+.puzzle-board cg-container {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.puzzle-feedback {
+  text-align: center;
+  min-height: 3rem;
+  margin-bottom: 0.75rem;
+}
+
+.puzzle-status {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.puzzle-prompt {
+  color: #555;
+}
+
+.puzzle-correct {
+  color: #2a8a2a;
+  font-weight: 700;
+}
+
+.puzzle-incorrect {
+  color: #c00;
+  font-weight: 700;
+}
+
+.puzzle-solution {
+  font-size: 0.95rem;
+  color: #444;
+  margin-top: 0.3rem;
+}
+
+.puzzle-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.puzzle-score {
+  font-weight: 600;
+}
+
+.keyboard-hint {
+  margin-left: auto;
+}
+
+.keyboard-hint kbd {
+  display: inline-block;
+  padding: 0.1em 0.45em;
+  font-size: 0.85em;
+  font-family: inherit;
+  background: #e8e8e8;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  box-shadow: 0 1px 0 #bbb;
+}
+
+.puzzle-empty {
+  text-align: center;
+  padding: 2rem 0;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
@@ -305,5 +392,20 @@ button {
   }
   button:active {
     background-color: #0f0f0f69;
+  }
+
+  .puzzle-prompt {
+    color: #bbb;
+  }
+
+  .puzzle-solution {
+    color: #ccc;
+  }
+
+  .keyboard-hint kbd {
+    background: #444;
+    border-color: #666;
+    box-shadow: 0 1px 0 #333;
+    color: #ddd;
   }
 }

@@ -73,3 +73,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `App.tsx` replaced with `HashRouter`-based shell with nav bar linking Sync and Settings pages
 - `App.css` replaced with app shell, nav bar, settings form, progress bar, and results table styles
 - Fixed chessground license attribution: GPL-3.0 (not MIT) in README, copilot-instructions.md
+- **Slice 8 — Puzzle Solving UI:**
+- `PuzzleBoard` component wrapping chessground with React lifecycle management (init, update via `Api.set()`, destroy)
+- `PuzzlePage` with puzzle state machine (loading → solving → correct/incorrect → next), timer-based attempt tracking, and keyboard shortcuts (Spacebar for next puzzle)
+- `legalDests()` and `orientationFromFen()` pure utility functions bridging chess.js and chessground
+- `matchesSolutionMove()` with promotion normalization (queen promotion equivalence)
+- `formatSolutionDisplay()` converting UCI solution moves to SAN for human-readable feedback
+- Incorrect-move feedback: shows correct move in SAN, then animates solution onto the board after 800ms
+- chessground CSS imported (base, brown theme, cburnett pieces)
+- Puzzle-specific styles: board container with aspect-ratio square, feedback messages, controls bar, keyboard hint
+- Route `/puzzles` → `PuzzlePage`; nav bar updated: Sync | Puzzles | Settings
+- 18 new Vitest tests: 6 for PuzzleBoard utilities (legalDests, orientationFromFen), 12 for PuzzlePage utilities (matchesSolutionMove, formatSolutionDisplay)
+- New frontend dependencies: `chessground` 9.2.1 (GPL-3.0), `chess.js` 1.4.0 (BSD-2-Clause)
+- `docs/PUZZLES.md` updated with puzzle solving interaction model
+- `docs/ARCHITECTURE.md` updated with Slice 8 component structure and data flow
