@@ -4,7 +4,7 @@
 >
 > **This is a living document.** Update it as the project evolves. When a slice completes, mark it done and record notes. When reality diverges from the plan, rewrite the upcoming slices — don't force the plan onto the code.
 
-**Last updated:** project inception
+**Last updated:** 2026-04-19
 **Current slice:** Slice 9 — Basic Stats UI
 **Target release:** v0.1
 
@@ -361,7 +361,7 @@ Completed 2026-04-17.
 
 ## Slice 5 — Puzzle Generation
 
-**Status:** Not started
+**Status:** Done (2026-04-18)
 **Depends on:** 4
 **Estimated effort:** M
 

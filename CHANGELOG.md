@@ -72,7 +72,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Frontend API wrappers: `src/api/settings.ts` and `src/api/sync.ts`
 - `App.tsx` replaced with `HashRouter`-based shell with nav bar linking Sync and Settings pages
 - `App.css` replaced with app shell, nav bar, settings form, progress bar, and results table styles
-- Fixed chessground license attribution: GPL-3.0 (not MIT) in README, copilot-instructions.md
 - **Slice 8 — Puzzle Solving UI:**
 - `PuzzleBoard` component wrapping chessground with React lifecycle management (init, update via `Api.set()`, destroy)
 - `PuzzlePage` with puzzle state machine (loading → solving → correct/incorrect → next), timer-based attempt tracking, and keyboard shortcuts (Spacebar for next puzzle)
@@ -87,3 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New frontend dependencies: `chessground` 9.2.1 (GPL-3.0), `chess.js` 1.4.0 (BSD-2-Clause)
 - `docs/PUZZLES.md` updated with puzzle solving interaction model
 - `docs/ARCHITECTURE.md` updated with Slice 8 component structure and data flow
+
+### Fixed
+
+- Chessground license attribution: corrected from MIT to GPL-3.0 in README and copilot-instructions.md
