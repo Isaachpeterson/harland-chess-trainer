@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-04-19
+
 ### Added
 
 - Initial project scaffold: Tauri 2 app with React + TypeScript frontend
@@ -103,7 +105,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `app/Cargo.toml`: updated description and author
 - README: quickstart guide, Windows SmartScreen warning, feature list, dev setup instructions
 - Route `/about` → `AboutPage`; nav bar updated: Sync | Puzzles | Stats | Settings | About
+- `CONTRIBUTING.md` with development setup, coding conventions, and PR workflow
+- README: contributing section with roadmap summary
 
 ### Fixed
 
 - Chessground license attribution: corrected from MIT to GPL-3.0 in README and copilot-instructions.md
+
+[Unreleased]: https://github.com/Isaachpeterson/harland-chess-trainer/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Isaachpeterson/harland-chess-trainer/releases/tag/v0.1.0

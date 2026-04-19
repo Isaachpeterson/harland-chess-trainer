@@ -68,6 +68,21 @@ See the [docs/](docs/README.md) directory for:
 - [Analysis](docs/ANALYSIS.md) — analysis pipeline design
 - [Puzzles](docs/PUZZLES.md) — puzzle generation pipeline
 
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get started — whether that's reporting bugs, suggesting features, improving docs, or writing code.
+
+If you're looking for something to work on, check the [issue tracker](https://github.com/Isaachpeterson/harland-chess-trainer/issues) for issues labeled `good first issue` or `help wanted`.
+
+## Roadmap
+
+This project follows a slice-based development plan. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for the full roadmap. Next up after v0.1:
+
+- **v0.2** — Spaced repetition, failure analytics, mistake-level puzzles
+- **v0.3** — Counter-threat puzzles, tactical themes, OAuth for private games
+- **v0.4** — Opening explorer, endgame trainer
+- **v0.5+** — Chess.com support, PGN import/export
+
 ## License
 
 This project is licensed under the [GNU General Public License v3.0](LICENSE).
