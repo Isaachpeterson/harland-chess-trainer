@@ -61,7 +61,10 @@ export function StatsPage() {
         />
         <StatCard
           label="Success Rate"
-          value={formatSuccessRate(summary.success_rate, summary.total_attempts)}
+          value={formatSuccessRate(
+            summary.success_rate,
+            summary.total_attempts,
+          )}
         />
         <StatCard
           label="Attempted Today"

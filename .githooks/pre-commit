@@ -9,4 +9,12 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "Running prettier --check..."
+cd app/src-ui && npm run prettier:check
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "ERROR: Prettier check failed. Run 'npm run prettier:write' in app/src-ui and stage the changes."
+    exit 1
+fi
+
 echo "Pre-commit checks passed."

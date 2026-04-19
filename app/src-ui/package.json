@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prettier:check": "prettier --check \"src/**/*.{ts,tsx}\"",
+    "prettier:write": "prettier --write \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -31,6 +33,7 @@
     "@vitejs/plugin-react": "^4.6.0",
     "@vitest/coverage-v8": "^4.1.4",
     "jsdom": "^29.0.2",
+    "prettier": "^3.5.3",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
     "vitest": "^4.1.4"
