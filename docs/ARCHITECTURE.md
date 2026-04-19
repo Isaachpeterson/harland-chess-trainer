@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** Updated through Slice 4 — Blunder detection.
+> **Status:** Updated through Slice 5 — Puzzle generation.
 
 Harland Chess Trainer is a Tauri 2 desktop application organized as a Cargo workspace with multiple crates.
 
@@ -33,10 +33,11 @@ app (Tauri commands, orchestration)
  ├── chess-core       (shakmaty, thiserror)
  ├── engine           (tokio, thiserror)
  ├── lichess-client   (reqwest, serde, tokio, futures, thiserror)
+ ├── puzzle-gen       (engine, shakmaty, thiserror, tokio)
  └── storage          (sqlx + sqlite, tokio, thiserror, serde)
 ```
 
-Other crates (`puzzle-gen`) are scaffolded but have no dependencies or code yet.
+`puzzle-gen` depends on `engine` and `shakmaty` for multi-PV re-analysis and quality filtering.
 
 ## Data flow (Slice 1: game sync)
 
@@ -185,3 +186,41 @@ Now includes the `mistakes` module alongside `pgn`:
 - **Eval-before / eval-after pairing.** `eval_before` = evaluation at ply P-1 (after opponent's move), `eval_after` = evaluation at ply P (after user's move). User perspective conversion handles Black/White differences.
 - **Idempotent re-detection.** `insert_mistakes` deletes existing mistakes for the game before inserting, so re-running is safe.
 - **`best_move` deferred.** The engine's recommended move is populated in Slice 5 during puzzle generation; stored as empty string in Slice 4.
+
+### Puzzle generation (Slice 5)
+
+Slice 5 adds the `puzzle-gen` crate, which re-analyzes pre-blunder positions with multi-PV and applies quality filters.
+
+```
+generate_puzzles()
+  │
+  ├─► Storage::list_blunders(limit, offset)
+  │     Load all blunder records
+  │
+  ├─► For each blunder, check Storage::puzzle_exists_for_mistake(id)
+  │     Skip if puzzle already generated (idempotent)
+  │
+  ├─► Parse PGN to find previous_move_uci at ply-1 (for recapture filter)
+  │
+  ├─► puzzle_gen::generate_puzzles(blunders, engine, config)
+  │     For each blunder:
+  │       Engine::analyze(fen_before, {depth≥20, multipv=2})
+  │       │
+  │       ├─ Filter: depth_reached ≥ min_depth (18)
+  │       ├─ Filter: best_move ≠ user_move (not a false-positive blunder)
+  │       ├─ Filter: multipv_results.len() ≥ 2 (not single legal move)
+  │       ├─ Filter: eval gap ≥ 50cp between best and 2nd-best
+  │       └─ Filter: not a trivial recapture (destination square match + capture)
+  │       │
+  │       → PuzzleGenResult::Accepted(PuzzleCandidate) | Rejected { reason }
+  │
+  ├─► Storage::insert_puzzle(puzzle) for accepted candidates
+  └─► Storage::update_mistake_best_move(id, best_move) to backfill
+```
+
+### Key patterns (Slice 5)
+
+- **Re-analysis at puzzle time.** Multi-PV=2 analysis happens during puzzle generation, keeping Slice 3's single-PV analysis simple.
+- **Pure filter functions.** `unique_best_move_gap` and `is_trivial_recapture` are pure functions in `puzzle-gen/src/filters.rs`, fully unit-testable.
+- **Mate score handling.** Mate scores mapped to ±10,000cp for eval gap calculation, consistent with chess-core.
+- **Idempotent.** `puzzle_exists_for_mistake` check prevents duplicate puzzles on re-runs.

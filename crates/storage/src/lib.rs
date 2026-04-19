@@ -96,6 +96,26 @@ pub struct MistakeInsert {
     pub classification: String,
 }
 
+/// A stored puzzle.
+#[derive(Debug, Clone)]
+pub struct StoredPuzzle {
+    pub id: i64,
+    pub mistake_id: i64,
+    pub fen: String,
+    pub solution_moves: String,
+    pub themes: Option<String>,
+    pub created_at: i64,
+}
+
+/// Input for inserting a puzzle.
+#[derive(Debug, Clone)]
+pub struct PuzzleInsert {
+    pub mistake_id: i64,
+    pub fen: String,
+    pub solution_moves: String,
+    pub themes: Option<String>,
+}
+
 /// Errors from the storage layer.
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -135,6 +155,9 @@ impl Storage {
         sqlx::query(include_str!("../migrations/0003_mistakes.sql"))
             .execute(&pool)
             .await?;
+        sqlx::query(include_str!("../migrations/0004_puzzles.sql"))
+            .execute(&pool)
+            .await?;
 
         Ok(Self { pool })
     }
@@ -153,6 +176,9 @@ impl Storage {
             .execute(&pool)
             .await?;
         sqlx::query(include_str!("../migrations/0003_mistakes.sql"))
+            .execute(&pool)
+            .await?;
+        sqlx::query(include_str!("../migrations/0004_puzzles.sql"))
             .execute(&pool)
             .await?;
 
@@ -479,6 +505,91 @@ impl Storage {
                 analysis_completed_at: r.get("analysis_completed_at"),
             })
             .collect())
+    }
+
+    // -------------------------------------------------------------------
+    // Puzzle methods (Slice 5)
+    // -------------------------------------------------------------------
+
+    /// Inserts a puzzle. Returns the new puzzle's row ID.
+    pub async fn insert_puzzle(&self, puzzle: &PuzzleInsert) -> Result<i64, StorageError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let result = sqlx::query(
+            "INSERT INTO puzzles (mistake_id, fen, solution_moves, themes, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )
+        .bind(puzzle.mistake_id)
+        .bind(&puzzle.fen)
+        .bind(&puzzle.solution_moves)
+        .bind(&puzzle.themes)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.last_insert_rowid())
+    }
+
+    /// Lists puzzles, ordered by creation time (newest first).
+    pub async fn list_puzzles(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<StoredPuzzle>, StorageError> {
+        let rows = sqlx::query(
+            "SELECT id, mistake_id, fen, solution_moves, themes, created_at
+             FROM puzzles ORDER BY created_at DESC LIMIT ?1 OFFSET ?2",
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| StoredPuzzle {
+                id: r.get("id"),
+                mistake_id: r.get("mistake_id"),
+                fen: r.get("fen"),
+                solution_moves: r.get("solution_moves"),
+                themes: r.get("themes"),
+                created_at: r.get("created_at"),
+            })
+            .collect())
+    }
+
+    /// Returns the count of puzzles in the database.
+    pub async fn puzzle_count(&self) -> Result<i64, StorageError> {
+        let row = sqlx::query("SELECT COUNT(*) as cnt FROM puzzles")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(row.get::<i64, _>("cnt"))
+    }
+
+    /// Checks if a puzzle already exists for a given mistake.
+    pub async fn puzzle_exists_for_mistake(&self, mistake_id: i64) -> Result<bool, StorageError> {
+        let row = sqlx::query("SELECT COUNT(*) as cnt FROM puzzles WHERE mistake_id = ?1")
+            .bind(mistake_id)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(row.get::<i64, _>("cnt") > 0)
+    }
+
+    /// Updates the best_move column on a mistake record (populated during puzzle generation).
+    pub async fn update_mistake_best_move(
+        &self,
+        mistake_id: i64,
+        best_move: &str,
+    ) -> Result<(), StorageError> {
+        sqlx::query("UPDATE mistakes SET best_move = ?1 WHERE id = ?2")
+            .bind(best_move)
+            .bind(mistake_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     /// Lists all games that have not been analyzed (no `analysis_completed_at`).
@@ -893,5 +1004,95 @@ mod tests {
         let storage = Storage::new_in_memory().await.unwrap();
         let mistakes = storage.get_mistakes_for_game("nonexistent").await.unwrap();
         assert!(mistakes.is_empty());
+    }
+
+    // -------------------------------------------------------------------
+    // Puzzle tests (Slice 5)
+    // -------------------------------------------------------------------
+
+    /// Helper: insert a blunder mistake for puzzle tests. Returns the mistake ID.
+    async fn insert_test_blunder(storage: &Storage, game_id: &str, ply: i32) -> i64 {
+        insert_test_game(storage, game_id).await;
+        let mistakes = vec![test_mistake(game_id, ply, "blunder")];
+        storage.insert_mistakes(game_id, &mistakes).await.unwrap();
+        let stored = storage.get_mistakes_for_game(game_id).await.unwrap();
+        stored[0].id
+    }
+
+    #[tokio::test]
+    async fn insert_and_list_puzzles() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        let mistake_id = insert_test_blunder(&storage, "puzzle_test1", 4).await;
+
+        let puzzle = PuzzleInsert {
+            mistake_id,
+            fen: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1".to_owned(),
+            solution_moves: r#"["d7d5"]"#.to_owned(),
+            themes: None,
+        };
+        let puzzle_id = storage.insert_puzzle(&puzzle).await.unwrap();
+        assert!(puzzle_id > 0);
+
+        let puzzles = storage.list_puzzles(100, 0).await.unwrap();
+        assert_eq!(puzzles.len(), 1);
+        assert_eq!(puzzles[0].mistake_id, mistake_id);
+        assert!(puzzles[0].fen.contains("rnbqkbnr"));
+    }
+
+    #[tokio::test]
+    async fn puzzle_count_works() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        assert_eq!(storage.puzzle_count().await.unwrap(), 0);
+
+        let mistake_id = insert_test_blunder(&storage, "pcount_test", 4).await;
+        let puzzle = PuzzleInsert {
+            mistake_id,
+            fen: "test_fen".to_owned(),
+            solution_moves: r#"["e2e4"]"#.to_owned(),
+            themes: None,
+        };
+        storage.insert_puzzle(&puzzle).await.unwrap();
+        assert_eq!(storage.puzzle_count().await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn puzzle_exists_for_mistake_check() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        let mistake_id = insert_test_blunder(&storage, "pexist_test", 4).await;
+
+        assert!(!storage.puzzle_exists_for_mistake(mistake_id).await.unwrap());
+
+        let puzzle = PuzzleInsert {
+            mistake_id,
+            fen: "test_fen".to_owned(),
+            solution_moves: r#"["e2e4"]"#.to_owned(),
+            themes: None,
+        };
+        storage.insert_puzzle(&puzzle).await.unwrap();
+        assert!(storage.puzzle_exists_for_mistake(mistake_id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn update_mistake_best_move_works() {
+        let storage = Storage::new_in_memory().await.unwrap();
+        let mistake_id = insert_test_blunder(&storage, "bestmove_test", 4).await;
+
+        // Initially best_move is "d7d5" from test_mistake helper
+        let stored = storage
+            .get_mistakes_for_game("bestmove_test")
+            .await
+            .unwrap();
+        assert_eq!(stored[0].best_move, "d7d5");
+
+        storage
+            .update_mistake_best_move(mistake_id, "e2e4")
+            .await
+            .unwrap();
+
+        let stored = storage
+            .get_mistakes_for_game("bestmove_test")
+            .await
+            .unwrap();
+        assert_eq!(stored[0].best_move, "e2e4");
     }
 }

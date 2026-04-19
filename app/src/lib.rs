@@ -57,6 +57,15 @@ pub struct DetectAllMistakesResult {
     pub errors: Vec<String>,
 }
 
+/// Result of generating puzzles from blunders.
+#[derive(Debug, Clone, Serialize)]
+pub struct GeneratePuzzlesResult {
+    pub puzzles_created: u32,
+    pub puzzles_rejected: u32,
+    pub puzzles_skipped: u32,
+    pub errors: Vec<String>,
+}
+
 /// Progress event payload emitted during batch analysis.
 #[derive(Debug, Clone, Serialize)]
 pub struct AnalysisProgress {
@@ -742,6 +751,151 @@ async fn detect_all_mistakes(
     })
 }
 
+/// Generates training puzzles from all detected blunders that don't already have puzzles.
+///
+/// For each blunder, re-analyzes the pre-blunder position with multi-PV, applies quality
+/// filters, and stores accepted puzzles. Also backfills the `best_move` column on mistakes.
+#[tauri::command]
+async fn generate_puzzles(
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<GeneratePuzzlesResult, String> {
+    // Load all blunders
+    let blunders = {
+        let guard = state.lock().await;
+        guard
+            .storage
+            .list_blunders(10_000, 0)
+            .await
+            .map_err(|e| format!("failed to list blunders: {e}"))?
+    };
+
+    // Filter out blunders that already have puzzles
+    let mut inputs = Vec::new();
+    let mut skipped = 0u32;
+    {
+        let guard = state.lock().await;
+        for blunder in &blunders {
+            let exists = guard
+                .storage
+                .puzzle_exists_for_mistake(blunder.id)
+                .await
+                .map_err(|e| format!("failed to check puzzle existence: {e}"))?;
+            if exists {
+                skipped += 1;
+                continue;
+            }
+
+            // To detect recaptures, we need the previous move. Parse PGN to find it.
+            let previous_move_uci = {
+                let game = guard
+                    .storage
+                    .get_game(&blunder.game_id)
+                    .await
+                    .map_err(|e| format!("failed to load game: {e}"))?;
+                if let Some(game) = game {
+                    chess_core::parse_pgn(&game.pgn, &game.user_color)
+                        .ok()
+                        .and_then(|parsed| {
+                            let prev_ply = (blunder.ply - 1) as u32;
+                            parsed
+                                .iter()
+                                .find(|m| m.ply == prev_ply)
+                                .map(|m| m.move_uci.clone())
+                        })
+                } else {
+                    None
+                }
+            };
+
+            inputs.push(puzzle_gen::BlunderInput {
+                mistake_id: blunder.id,
+                game_id: blunder.game_id.clone(),
+                ply: blunder.ply,
+                fen_before: blunder.fen_before.clone(),
+                user_move: blunder.user_move.clone(),
+                previous_move_uci,
+            });
+        }
+    }
+
+    if inputs.is_empty() {
+        return Ok(GeneratePuzzlesResult {
+            puzzles_created: 0,
+            puzzles_rejected: 0,
+            puzzles_skipped: skipped,
+            errors: Vec::new(),
+        });
+    }
+
+    // Run puzzle generation (needs mutable engine access)
+    let results = {
+        let mut guard = state.lock().await;
+        let eng = guard.ensure_engine().await?;
+        let config = puzzle_gen::PuzzleGenConfig::default();
+        puzzle_gen::generate_puzzles(&inputs, eng, &config).await
+    };
+
+    // Store accepted puzzles and update best_move on mistakes
+    let mut created = 0u32;
+    let mut rejected = 0u32;
+    let mut errors = Vec::new();
+
+    let guard = state.lock().await;
+    for result in results {
+        match result {
+            puzzle_gen::PuzzleGenResult::Accepted(candidate) => {
+                let insert = storage::PuzzleInsert {
+                    mistake_id: candidate.mistake_id,
+                    fen: candidate.fen,
+                    solution_moves: serde_json::to_string(&candidate.solution_uci_moves)
+                        .unwrap_or_default(),
+                    themes: if candidate.themes.is_empty() {
+                        None
+                    } else {
+                        Some(serde_json::to_string(&candidate.themes).unwrap_or_default())
+                    },
+                };
+
+                match guard.storage.insert_puzzle(&insert).await {
+                    Ok(_) => {
+                        // Backfill best_move on the mistake
+                        if let Err(e) = guard
+                            .storage
+                            .update_mistake_best_move(
+                                candidate.mistake_id,
+                                &candidate.best_move_uci,
+                            )
+                            .await
+                        {
+                            errors.push(format!(
+                                "mistake {}: failed to update best_move: {e}",
+                                candidate.mistake_id
+                            ));
+                        }
+                        created += 1;
+                    }
+                    Err(e) => {
+                        errors.push(format!(
+                            "mistake {}: failed to store puzzle: {e}",
+                            candidate.mistake_id
+                        ));
+                    }
+                }
+            }
+            puzzle_gen::PuzzleGenResult::Rejected { .. } => {
+                rejected += 1;
+            }
+        }
+    }
+
+    Ok(GeneratePuzzlesResult {
+        puzzles_created: created,
+        puzzles_rejected: rejected,
+        puzzles_skipped: skipped,
+        errors,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -762,7 +916,8 @@ pub fn run() {
             analyze_game,
             analyze_pending_games,
             detect_mistakes,
-            detect_all_mistakes
+            detect_all_mistakes,
+            generate_puzzles
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

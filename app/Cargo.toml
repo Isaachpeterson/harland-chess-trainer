@@ -26,5 +26,6 @@ lichess-client = { path = "../crates/lichess-client" }
 chess-core = { path = "../crates/chess-core" }
 engine = { path = "../crates/engine" }
 storage = { path = "../crates/storage" }
+puzzle-gen = { path = "../crates/puzzle-gen" }
 tokio = { version = "1", features = ["full"] }
 

@@ -6,3 +6,11 @@ description = "Puzzle generation from analyzed chess games with quality filterin
 license = "GPL-3.0-only"
 
 [dependencies]
+engine = { path = "../engine" }
+shakmaty = "0.27"
+thiserror = "2"
+tokio = { version = "1", features = ["sync"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

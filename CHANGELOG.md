@@ -38,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Typed frontend API wrapper (`src-ui/src/api/analysis.ts`) for analysis commands
 - `docs/ANALYSIS.md` describing the Lichess-first analysis strategy and eval conventions
 - 22 unit tests for PGN parsing and eval extraction, 5 integration tests for the analysis pipeline
+- `puzzle-gen` crate: puzzle generation from detected blunders with multi-PV re-analysis
+- Quality filters: unique-best-move gap (≥50cp), trivial recapture detection, depth floor (≥18), single-legal-move rejection, best-move-matches-user-move rejection
+- `storage` migration `0004_puzzles.sql`: puzzles table with FK to mistakes
+- `Storage::insert_puzzle`, `list_puzzles`, `puzzle_count`, `puzzle_exists_for_mistake`, `update_mistake_best_move`
+- Tauri command `generate_puzzles`: loads blunders, runs puzzle-gen with engine, stores accepted puzzles, backfills `best_move` on mistakes
+- Frontend API wrapper `src-ui/src/api/puzzles.ts` with typed `generatePuzzles()` function
+- `docs/PUZZLES.md` describing the puzzle generation pipeline and quality filters
+- 12 unit tests for puzzle quality filters, 5 storage tests for puzzle CRUD
 - 6 new storage tests for evaluation CRUD and analysis status tracking
 - `chess-core` mistake classification: `MistakeClassification` enum (`Inaccuracy`, `Mistake`, `Blunder`), `MistakeThresholds` struct with configurable 1600-level defaults
 - `classify_mistake()` function with mate score handling (±10,000cp sentinels, mate-to-mate same-side filtering), already-losing-position cap, and user perspective conversion

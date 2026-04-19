@@ -1676,6 +1676,7 @@ dependencies = [
  "chess-core",
  "engine",
  "lichess-client",
+ "puzzle-gen",
  "serde",
  "serde_json",
  "storage",
@@ -3336,6 +3337,13 @@ dependencies = [
 [[package]]
 name = "puzzle-gen"
 version = "0.1.0"
+dependencies = [
+ "engine",
+ "shakmaty",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "quick-error"

@@ -5,7 +5,7 @@
 > **This is a living document.** Update it as the project evolves. When a slice completes, mark it done and record notes. When reality diverges from the plan, rewrite the upcoming slices — don't force the plan onto the code.
 
 **Last updated:** project inception
-**Current slice:** Slice 5 — Puzzle generation
+**Current slice:** Slice 6 — Puzzle attempt tracking
 **Target release:** v0.1
 
 ---
@@ -85,7 +85,7 @@ Concrete steps a human runs to confirm the slice works.
 | 2 | Stockfish engine wrapper | Done (2026-04-17) | 0 |
 | 3 | Game analysis pipeline | Done (2026-04-17) | 1, 2 |
 | 4 | Blunder detection | Done (2026-04-17) | 3 |
-| 5 | Puzzle generation | Not started | 4 |
+| 5 | Puzzle generation | Done (2026-04-18) | 4 |
 | 6 | Puzzle attempt tracking | Not started | 5 |
 | 7 | Settings + Sync UI | Not started | 1 |
 | 8 | Puzzle solving UI | Not started | 5, 6 |
@@ -400,6 +400,20 @@ Turn detected blunders into high-quality training puzzles by applying quality fi
 1. Run `generate_puzzles()` against all detected blunders.
 2. Review 5 generated puzzles manually — each should have one clearly best move that a human would recognize as the solution.
 3. Confirm at least one blunder was rejected by the unique-best-move filter (log this for visibility).
+
+### Notes
+Completed 2026-04-18.
+
+- `puzzle-gen` crate depends on `engine` (for multi-PV analysis) and `shakmaty 0.27` (for recapture detection via position/move validation).
+- Quality filters implemented in a separate `filters` module with pure functions, fully unit-testable without Stockfish.
+- Re-analysis uses `multipv: 2` at `depth: max(min_depth, 20)` per position. This keeps Slice 3's analysis simple (single PV) while getting the multi-PV data needed for puzzle quality.
+- Recapture detection parses the FEN with shakmaty, converts the best move UCI to a `Move`, and checks `Move::is_capture()` plus destination-square matching with the opponent's previous move.
+- Mate scores mapped to ±10,000cp sentinels for eval gap calculation, consistent with chess-core's approach.
+- `generate_puzzles` Tauri command is idempotent: skips blunders that already have puzzles via `puzzle_exists_for_mistake`.
+- Previous move UCI (for recapture filter) is obtained by re-parsing the PGN and finding the move at `ply - 1`.
+- `best_move` column on mistakes is backfilled during puzzle generation, as planned in Slice 4 notes.
+- Storage migration `0004_puzzles.sql` uses `CREATE TABLE IF NOT EXISTS` for safety.
+- **Bug found during manual verification:** Some blunders flagged by Slice 4 had the engine's best move matching the user's actual move (e.g., checkmate moves where eval drop was a mate-score artifact). Added `BestMoveMatchesUserMove` filter to reject these false positives. Root cause is likely a mate-score edge case in blunder detection — worth revisiting in a future slice.
 
 ---
 
