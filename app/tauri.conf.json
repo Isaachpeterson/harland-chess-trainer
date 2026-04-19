@@ -7,7 +7,7 @@
     "beforeDevCommand": "cd ../src-ui && npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "cd ../src-ui && npm run build",
-    "frontendDist": "../src-ui/dist"
+    "frontendDist": "src-ui/dist"
   },
   "app": {
     "withGlobalTauri": true,
