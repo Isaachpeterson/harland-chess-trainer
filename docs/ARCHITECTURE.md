@@ -403,3 +403,47 @@ PuzzlePage mount
 - **Stable callback refs.** `onMove` uses a ref-based pattern to avoid re-binding chessground's event handler on every render.
 - **Pure utility functions exported for testing.** `legalDests`, `orientationFromFen`, `matchesSolutionMove`, `formatSolutionDisplay` are all pure and tested without DOM or Tauri mocks.
 - **Default queen promotion.** Simplifies the UI while covering 99%+ of real puzzle solutions. Promotion normalization in `matchesSolutionMove` ensures `e7e8q` and `e7e8` are treated as equivalent.
+
+---
+
+### Slice 9 — Basic Stats UI
+
+#### StatsPage
+
+`StatsPage` (`src/pages/StatsPage.tsx`) fetches `get_attempts_summary` on mount and renders a 2×2 grid of stat cards showing:
+
+| Card | Source field |
+|------|-------------|
+| Puzzles Solved | `total_successes` |
+| Success Rate | `success_rate` (formatted by `formatSuccessRate`) |
+| Attempted Today | `puzzles_attempted_today` |
+| Total Attempts | `total_attempts` |
+
+`formatSuccessRate(rate, totalAttempts)` is a pure exported function that returns `"—"` when `totalAttempts === 0` and a rounded percentage otherwise.
+
+#### Frontend file layout (Slice 9 additions)
+
+```
+src-ui/src/
+  pages/
+    StatsPage.tsx         # stats display page; exports formatSuccessRate()
+  __tests__/
+    statsPage.test.ts     # 6 tests for formatSuccessRate
+```
+
+#### Routing update
+
+New route added: `/stats` → `StatsPage`. Nav bar now shows Sync | Puzzles | Stats | Settings.
+
+#### Data flow: stats page
+
+```
+StatsPage mount
+  │
+  └─► getAttemptsSummary() → Tauri invoke → Storage::get_attempts_summary()
+        → AttemptsSummaryResponse { total_attempts, total_successes,
+                                    success_rate, puzzles_attempted,
+                                    puzzles_attempted_today }
+  │
+  └─► renders four StatCard components with formatted values
+```

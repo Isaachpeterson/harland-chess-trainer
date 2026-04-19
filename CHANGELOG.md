@@ -86,6 +86,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New frontend dependencies: `chessground` 9.2.1 (GPL-3.0), `chess.js` 1.4.0 (BSD-2-Clause)
 - `docs/PUZZLES.md` updated with puzzle solving interaction model
 - `docs/ARCHITECTURE.md` updated with Slice 8 component structure and data flow
+- **Slice 9 — Basic Stats UI:**
+- `StatsPage` component: fetches `get_attempts_summary` on mount and displays four stat cards (Puzzles Solved, Success Rate, Attempted Today, Total Attempts)
+- `formatSuccessRate()` pure formatting function: renders success rate as a rounded percentage, returns `"—"` when no attempts exist
+- 6 Vitest unit tests for `formatSuccessRate` in `__tests__/statsPage.test.ts`
+- Route `/stats` → `StatsPage`; nav bar updated: Sync | Puzzles | Stats | Settings
+- Stats-page styles: two-column stat card grid, dark-mode support
 
 ### Fixed
 

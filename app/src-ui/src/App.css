@@ -375,6 +375,49 @@ button {
   padding: 2rem 0;
 }
 
+/* ── Stats page ─────────────────────────────────────────────── */
+.stats-page {
+  max-width: 480px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.25rem 1rem;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #1a1a2e;
+}
+
+.stat-label {
+  margin-top: 0.3rem;
+  font-size: 0.85rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stats-empty-hint {
+  margin-top: 1.25rem;
+  text-align: center;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
@@ -407,5 +450,18 @@ button {
     border-color: #666;
     box-shadow: 0 1px 0 #333;
     color: #ddd;
+  }
+
+  .stat-card {
+    background: #1e1e2e;
+    border-color: #444;
+  }
+
+  .stat-value {
+    color: #e8e8f0;
+  }
+
+  .stat-label {
+    color: #aaa;
   }
 }

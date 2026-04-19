@@ -5,7 +5,7 @@
 > **This is a living document.** Update it as the project evolves. When a slice completes, mark it done and record notes. When reality diverges from the plan, rewrite the upcoming slices — don't force the plan onto the code.
 
 **Last updated:** 2026-04-19
-**Current slice:** Slice 9 — Basic Stats UI
+**Current slice:** Slice 10 — v0.1 Release Prep
 **Target release:** v0.1
 
 ---
@@ -89,7 +89,7 @@ Concrete steps a human runs to confirm the slice works.
 | 6 | Puzzle attempt tracking | Done (2026-04-18) | 5 |
 | 7 | Settings + Sync UI | Done (2026-04-19) | 1 |
 | 8 | Puzzle solving UI | Done (2026-04-19) | 5, 6 |
-| 9 | Basic stats UI | Not started | 6 |
+| 9 | Basic stats UI | Done (2026-04-19) | 6 |
 | 10 | v0.1 release prep | Not started | all prior |
 
 Post-v0.1 slices are sketched at the end of this document but not yet broken into detail.
@@ -570,7 +570,7 @@ Completed 2026-04-19.
 
 ## Slice 9 — Basic Stats UI
 
-**Status:** Not started
+**Status:** Done (2026-04-19)
 **Depends on:** 6
 **Estimated effort:** S
 
@@ -593,6 +593,9 @@ A minimal stats page so the user can see their progress. Not a dashboard — jus
 
 ### Manual verification
 1. View the stats page after solving some puzzles. Numbers match what's in the database.
+
+### Notes
+`StatsPage` displays four stat cards sourced from the existing `get_attempts_summary` Tauri command: Puzzles Solved (`total_successes`), Success Rate (formatted percentage), Attempted Today (`puzzles_attempted_today`), and Total Attempts (`total_attempts`). "Current streak" was not implemented because the `AttemptsSummary` struct and `get_attempts_summary` command do not return streak data; adding a streak query would require new storage logic that is out of scope for this slice. The four available metrics cover the core progress feedback. The `formatSuccessRate` function is exported and covered by 6 Vitest unit tests.
 
 ---
 
