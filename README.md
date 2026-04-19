@@ -19,6 +19,6 @@ This project is licensed under the [GNU General Public License v3.0](LICENSE).
 ### Third-party attributions
 
 - [Stockfish](https://stockfishchess.org/) (GPL-3.0) — bundled chess engine ([source](https://github.com/official-stockfish/Stockfish))
-- [chessground](https://github.com/lichess-org/chessground) (MIT) — chess board UI
+- [chessground](https://github.com/lichess-org/chessground) (GPL-3.0) — chess board UI
 - [chess.js](https://github.com/jhlywa/chess.js) (BSD-2-Clause) — frontend chess move validation
 - [shakmaty](https://github.com/niklasf/shakmaty) (GPL-3.0) — Rust chess library

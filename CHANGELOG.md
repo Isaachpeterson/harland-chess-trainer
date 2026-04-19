@@ -48,21 +48,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 12 unit tests for puzzle quality filters, 5 storage tests for puzzle CRUD
 - 6 new storage tests for evaluation CRUD and analysis status tracking
 - `chess-core` mistake classification: `MistakeClassification` enum (`Inaccuracy`, `Mistake`, `Blunder`), `MistakeThresholds` struct with configurable 1600-level defaults
-- `classify_mistake()` function with mate score handling (±10,000cp sentinels, mate-to-mate same-side filtering), already-losing-position cap, and user perspective conversion
-- Property-based tests via `proptest` for classification monotonicity and symmetry
-- `storage` migration `0003_mistakes.sql`: `mistakes` table for detected blunders/mistakes/inaccuracies
+- `classify_mistake` pure function with mate-score handling, already-losing cap, and configurable thresholds
+- `storage` migration `0003_mistakes.sql`: mistakes table
 - `Storage::insert_mistakes`, `get_mistakes_for_game`, `list_blunders`, `mistake_count`, `list_analyzed_games`
-- Tauri command `detect_mistakes(game_id)`: per-game blunder detection from stored evaluations
-- Tauri command `detect_all_mistakes()`: batch blunder detection across all analyzed games
-- Typed frontend API wrappers for `detectMistakes` and `detectAllMistakes` in `analysis.ts`
-- `docs/ANALYSIS.md` updated with blunder classification rules, mate score handling, and already-losing cap
-- 24 unit tests for mistake classification edge cases, 4 proptest property-based tests, 8 storage tests for mistake CRUD
-- `storage` migration `0005_attempts.sql`: `puzzle_attempts` table for tracking user puzzle solve attempts
-- `Storage::record_attempt`, `get_attempts_for_puzzle`, `get_attempts_summary`, `get_next_puzzle` (unattempted-first random selection with fallback)
-- `StoredAttempt` and `AttemptsSummary` types in storage crate
-- Tauri command `get_next_puzzle()`: returns next unseen puzzle (random unattempted, fallback to random attempted)
-- Tauri command `submit_puzzle_attempt(puzzle_id, success, time_taken_ms, move_played)`: records a puzzle attempt
-- Tauri command `get_attempts_summary()`: returns aggregate statistics (total attempts, success rate, puzzles attempted today)
-- Typed frontend API wrappers (`getNextPuzzle`, `submitPuzzleAttempt`, `getAttemptsSummary`) in `puzzles.ts`
-- `docs/ANALYSIS.md` updated with puzzle attempt tracking data model and selection strategy
-- 8 storage unit tests for attempt recording, retrieval, summary stats, and next-puzzle selection
+- Tauri commands `detect_mistakes(game_id)` and `detect_all_mistakes()`
+- Property-based tests with `proptest` for mistake classification (monotonicity, symmetry, zero-drop invariants)
+- 8 storage tests for puzzle attempt CRUD (`puzzle_attempts` table, `0005_attempts.sql` migration)
+- `Storage::record_attempt`, `get_attempts_for_puzzle`, `get_attempts_summary`, `get_next_puzzle`
+- Tauri commands `submit_puzzle_attempt`, `get_next_puzzle`, `get_attempts_summary`
+- Frontend API wrappers in `src-ui/src/api/puzzles.ts` for attempt commands
+- **Slice 7 — Settings + Sync UI:**
+- `storage` migration `0006_settings.sql`: `user_settings` single-row table with seeded defaults
+- `UserSettings` struct (serde Serialize + Deserialize) with fields: `lichess_username`, `max_games`, `use_stockfish`, threshold fields
+- `Storage::get_settings()` and `Storage::save_settings()` with 3 unit tests
+- Tauri commands `get_settings`, `save_settings`, and `full_sync` (chained pipeline with `"sync-progress"` event emission)
+- `FullSyncResult` and `SyncProgress` Tauri response types
+- Routing: `react-router-dom` v6 with `HashRouter`; routes `/` (Sync) and `/settings` (Settings)
+- `SettingsPage`: form for username, max games, Stockfish toggle, and threshold inputs
+- `SyncPage`: "Fetch & Analyze" button, progress bar driven by `"sync-progress"` events, results table
+- `useSyncProgress` hook encapsulating Tauri event listener for `"sync-progress"`
+- `src/utils/syncStages.ts` pure utility functions (`stageName`, `isRunning`, `formatPercent`)
+- Vitest setup (`vitest/config`, jsdom, `@testing-library/jest-dom`); 11 unit tests for `syncStages`
+- Frontend API wrappers: `src/api/settings.ts` and `src/api/sync.ts`
+- `App.tsx` replaced with `HashRouter`-based shell with nav bar linking Sync and Settings pages
+- `App.css` replaced with app shell, nav bar, settings form, progress bar, and results table styles
+- Fixed chessground license attribution: GPL-3.0 (not MIT) in README, copilot-instructions.md

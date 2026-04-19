@@ -127,6 +127,31 @@ pub struct StoredAttempt {
     pub move_played: String,
 }
 
+/// User preferences persisted in the database.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UserSettings {
+    pub lichess_username: String,
+    pub max_games: i64,
+    /// When `true`, always use local Stockfish instead of Lichess embedded evals.
+    pub use_stockfish: bool,
+    pub inaccuracy_threshold_cp: i64,
+    pub mistake_threshold_cp: i64,
+    pub blunder_threshold_cp: i64,
+}
+
+impl Default for UserSettings {
+    fn default() -> Self {
+        Self {
+            lichess_username: String::new(),
+            max_games: 50,
+            use_stockfish: false,
+            inaccuracy_threshold_cp: 50,
+            mistake_threshold_cp: 100,
+            blunder_threshold_cp: 200,
+        }
+    }
+}
+
 /// Aggregate statistics for puzzle attempts.
 #[derive(Debug, Clone)]
 pub struct AttemptsSummary {
@@ -182,6 +207,9 @@ impl Storage {
         sqlx::query(include_str!("../migrations/0005_attempts.sql"))
             .execute(&pool)
             .await?;
+        sqlx::query(include_str!("../migrations/0006_settings.sql"))
+            .execute(&pool)
+            .await?;
 
         Ok(Self { pool })
     }
@@ -206,6 +234,9 @@ impl Storage {
             .execute(&pool)
             .await?;
         sqlx::query(include_str!("../migrations/0005_attempts.sql"))
+            .execute(&pool)
+            .await?;
+        sqlx::query(include_str!("../migrations/0006_settings.sql"))
             .execute(&pool)
             .await?;
 
@@ -795,6 +826,58 @@ impl Storage {
             themes: r.get("themes"),
             created_at: r.get("created_at"),
         }))
+    }
+
+    // -------------------------------------------------------------------
+    // Settings methods (Slice 7)
+    // -------------------------------------------------------------------
+
+    /// Returns the user's settings. The table is seeded with defaults on
+    /// first migration, so this always returns a value.
+    pub async fn get_settings(&self) -> Result<UserSettings, StorageError> {
+        let row = sqlx::query(
+            "SELECT lichess_username, max_games, use_stockfish,
+                    inaccuracy_threshold_cp, mistake_threshold_cp, blunder_threshold_cp
+             FROM user_settings WHERE id = 1",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row
+            .map(|r| UserSettings {
+                lichess_username: r.get("lichess_username"),
+                max_games: r.get("max_games"),
+                use_stockfish: r.get::<i32, _>("use_stockfish") != 0,
+                inaccuracy_threshold_cp: r.get("inaccuracy_threshold_cp"),
+                mistake_threshold_cp: r.get("mistake_threshold_cp"),
+                blunder_threshold_cp: r.get("blunder_threshold_cp"),
+            })
+            .unwrap_or_default())
+    }
+
+    /// Persists the user's settings, overwriting the existing single row.
+    pub async fn save_settings(&self, settings: &UserSettings) -> Result<(), StorageError> {
+        sqlx::query(
+            "UPDATE user_settings SET
+                lichess_username = ?1,
+                max_games = ?2,
+                use_stockfish = ?3,
+                inaccuracy_threshold_cp = ?4,
+                mistake_threshold_cp = ?5,
+                blunder_threshold_cp = ?6,
+                updated_at = strftime('%s', 'now')
+             WHERE id = 1",
+        )
+        .bind(&settings.lichess_username)
+        .bind(settings.max_games)
+        .bind(settings.use_stockfish as i32)
+        .bind(settings.inaccuracy_threshold_cp)
+        .bind(settings.mistake_threshold_cp)
+        .bind(settings.blunder_threshold_cp)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 }
 

@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** Updated through Slice 6 — Puzzle attempt tracking.
+> **Status:** Updated through Slice 7 — Settings + Sync UI.
 
 Harland Chess Trainer is a Tauri 2 desktop application organized as a Cargo workspace with multiple crates.
 
@@ -254,3 +254,78 @@ get_attempts_summary()
 - **Pure persistence slice.** No engine or network calls. Only reads/writes to SQLite.
 - **Unattempted-first selection.** `get_next_puzzle` prioritizes unseen puzzles for coverage, falling back to random when all are attempted.
 - **UTC day boundary.** "Puzzles attempted today" uses UTC midnight as the boundary for simplicity.
+
+### Settings + Sync UI (Slice 7)
+
+Slice 7 adds the first real UI: a settings form, a sync page with a live progress bar, and the `full_sync` command that chains the entire pipeline.
+
+#### Settings persistence
+
+```
+user_settings table (0006_settings.sql)
+  id INTEGER PRIMARY KEY CHECK (id = 1)   -- single-row enforcement
+  lichess_username TEXT
+  max_games INTEGER
+  use_stockfish INTEGER                   -- boolean as 0/1
+  inaccuracy_threshold_cp INTEGER
+  mistake_threshold_cp INTEGER
+  blunder_threshold_cp INTEGER
+```
+
+`Storage::get_settings()` returns `UserSettings` (or struct defaults if row is missing).
+`Storage::save_settings()` runs `UPDATE WHERE id = 1`.
+
+#### Full sync pipeline
+
+```
+full_sync()  (app/src/lib.rs)
+  │  Emits "sync-progress" Tauri events at each stage
+  │
+  ├─ stage: "fetching"   (fraction 0.0)
+  │   sync_games_inner(username, max_games)
+  │
+  ├─ stage: "analyzing"  (fraction 0.25 → incremental per game)
+  │   analyze_pending_games_inner(use_stockfish)
+  │
+  ├─ stage: "detecting"  (fraction 0.5)
+  │   detect_all_mistakes_inner()
+  │
+  ├─ stage: "generating" (fraction 0.75)
+  │   generate_puzzles_inner()
+  │
+  └─ stage: "complete"   (fraction 1.0)
+     → FullSyncResult { fetched, new_games, games_analyzed, total_blunders, puzzles_created, errors }
+```
+
+#### Frontend routing
+
+Uses `react-router-dom` v6 with `HashRouter`. `BrowserRouter` cannot be used in Tauri because the custom protocol origin does not support server-side routing. Routes:
+
+- `/` → `SyncPage`
+- `/settings` → `SettingsPage`
+
+#### Frontend file layout (Slice 7 additions)
+
+```
+src-ui/src/
+  pages/
+    SyncPage.tsx          # "Fetch & Analyze" button, progress bar, results table
+    SettingsPage.tsx      # settings form with save feedback
+  hooks/
+    useSyncProgress.ts    # subscribes to "sync-progress" Tauri events
+  utils/
+    syncStages.ts         # pure functions: stageName, isRunning, formatPercent
+  api/
+    settings.ts           # getSettings / saveSettings wrappers
+    sync.ts               # fullSync wrapper + SyncProgress type
+  __tests__/
+    syncStages.test.ts    # 11 Vitest unit tests for pure utils
+```
+
+#### Key patterns (Slice 7)
+
+- **HashRouter for Tauri.** All navigation uses hash-based URLs (`/#/settings`). This is mandatory for Tauri apps.
+- **`full_sync` event emission.** Backend emits `SyncProgress { stage, message, fraction }` via `AppHandle::emit` so the frontend progress bar updates in real time without polling.
+- **Pure utils extracted for testability.** `syncStages.ts` contains only pure functions, making them unit-testable without mocking the Tauri `listen` API.
+- **Vitest with jsdom.** Frontend tests use `vitest/config`, `jsdom` environment, and `@testing-library/jest-dom` matchers.
+- **chessground license correction.** Previously documented as MIT; corrected to GPL-3.0 in README and copilot-instructions.md. License is compatible with this project.

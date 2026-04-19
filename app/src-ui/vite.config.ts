@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 // @ts-expect-error process is a nodejs global
@@ -29,4 +29,13 @@ export default defineConfig(async () => ({
       ignored: ["**/app/src/**", "**/app/target/**"],
     },
   },
+
+  // Vitest configuration for unit tests
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test-setup.ts"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+  },
 }));
+

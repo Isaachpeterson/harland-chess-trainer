@@ -52,7 +52,7 @@ These are the principles that should guide design decisions and code review:
 | Frontend language | **TypeScript** (strict mode) | Type safety across the web layer |
 | Frontend framework | **React 18+** | The author works in React daily; largest Copilot training data |
 | Styling | **Tailwind CSS** | Utility-first, fast iteration, pairs well with component libraries |
-| Chess board UI | **chessground** | The same open-source board Lichess uses; MIT licensed |
+| Chess board UI | **chessground** | The same open-source board Lichess uses; GPL-3.0 licensed (compatible with this project) |
 | Chess move validation (frontend) | **chess.js** | Canonical JavaScript chess library |
 | Backend language | **Rust** (stable toolchain) | Memory safety, strong compiler feedback, good for long-lived desktop processes |
 | Chess logic (backend) | **shakmaty** | High-quality Rust chess library; position representation, move generation, PGN parsing |
@@ -336,7 +336,7 @@ Migrations should be version-controlled and idempotent. Use sqlx's migration sys
 - [ ] GPL-3 copyright header at the top of every source file (use a short form referencing the LICENSE file).
 - [ ] Third-party attributions in README and About dialog:
   - Stockfish (GPL-3) — link to source
-  - chessground (MIT) — link to source
+  - chessground (GPL-3.0) — link to source
   - chess.js (BSD-2-Clause) — link to source
   - shakmaty (GPL-3) — link to source
   - Other dependencies as they're added

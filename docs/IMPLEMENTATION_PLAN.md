@@ -5,7 +5,7 @@
 > **This is a living document.** Update it as the project evolves. When a slice completes, mark it done and record notes. When reality diverges from the plan, rewrite the upcoming slices — don't force the plan onto the code.
 
 **Last updated:** project inception
-**Current slice:** Slice 7 — Settings + Sync UI
+**Current slice:** Slice 8 — Puzzle Solving UI
 **Target release:** v0.1
 
 ---
@@ -465,7 +465,7 @@ Record user attempts at solving puzzles, including correct/incorrect and time ta
 
 ## Slice 7 — Settings + Sync UI
 
-**Status:** Not started
+**Status:** Done (2026-04-19)
 **Depends on:** 1
 **Estimated effort:** M
 
@@ -502,6 +502,13 @@ First real UI slice. Lets the user enter their Lichess username, configure basic
 2. Enter a real Lichess username, set max games to 20, click "Fetch & Analyze."
 3. Watch the progress bar advance through fetch → analyze → detect → generate.
 4. Confirm on completion that puzzles are available in the database.
+
+### Notes
+- Chose `react-router-dom` v6 with `HashRouter` (not `BrowserRouter`). Tauri's custom protocol serves the app from a non-HTTP origin, which breaks server-side routing that BrowserRouter relies on. HashRouter is the correct choice for all Tauri apps.
+- `full_sync` chains: `sync_games` → `analyze_pending_games` → `detect_all_mistakes` → `generate_puzzles`. Emits `"sync-progress"` Tauri events with a `SyncProgress { stage, message, fraction }` payload at each stage boundary.
+- `user_settings` table uses a single-row pattern enforced by `id INTEGER PRIMARY KEY CHECK (id = 1)` with a seeded `INSERT OR IGNORE` in the migration. `get_settings` returns struct defaults if no row exists (defensive); `save_settings` only runs `UPDATE WHERE id = 1`.
+- chessground license corrected: it is GPL-3.0, not MIT as previously documented. Attribution updated in README and copilot-instructions.md.
+- Vitest added with `jsdom` test environment; `syncStages.ts` contains pure functions extracted specifically to enable frontend unit testing without Tauri mocks (11 tests).
 
 ---
 

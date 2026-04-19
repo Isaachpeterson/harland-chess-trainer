@@ -1,53 +1,246 @@
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafb);
-}
 :root {
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 24px;
   font-weight: 400;
-
   color: #0f0f0f;
   background-color: #f6f6f6;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
 }
 
-.container {
-  margin: 0;
-  padding-top: 10vh;
+/* ── App shell ─────────────────────────────────────────────── */
+.app-shell {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  text-align: center;
+  min-height: 100vh;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
+/* ── Navigation bar ─────────────────────────────────────────── */
+.app-nav {
   display: flex;
-  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1.25rem;
+  background: #1a1a2e;
+  color: #eee;
 }
 
-a {
-  font-weight: 500;
+.app-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin-right: auto;
+  letter-spacing: 0.01em;
+}
+
+.nav-links {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.nav-links a {
+  color: #aaa;
+  text-decoration: none;
+  padding: 0.3rem 0.75rem;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-links a:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-links a.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ── Main content area ──────────────────────────────────────── */
+.app-main {
+  flex: 1;
+  padding: 1.5rem 2rem;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.page h2 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+/* ── Settings form ──────────────────────────────────────────── */
+.settings-form fieldset {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.settings-form legend {
+  font-weight: 600;
+  padding: 0 0.4rem;
+}
+
+.settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.settings-form label.toggle-label {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.settings-form label.toggle-label input[type="checkbox"] {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+}
+
+.settings-form input[type="text"],
+.settings-form input[type="number"] {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+  max-width: 280px;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+/* ── Progress bar ───────────────────────────────────────────── */
+.progress-section {
+  margin-top: 1.25rem;
+}
+
+.progress-bar-track {
+  height: 10px;
+  background: #e0e0e0;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: #4a90d9;
+  border-radius: 5px;
+  transition: width 0.4s ease;
+}
+
+.progress-label {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  color: #444;
+}
+
+.stage-name {
+  font-weight: 600;
+}
+
+.progress-percent {
+  color: #888;
+}
+
+/* ── Sync results table ─────────────────────────────────────── */
+.sync-results {
+  margin-top: 1.5rem;
+}
+
+.sync-results h3 {
+  margin-bottom: 0.5rem;
+}
+
+.sync-results table {
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 360px;
+}
+
+.sync-results td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.sync-results td:first-child {
+  color: #555;
+}
+
+.sync-results td:last-child {
+  font-weight: 600;
+  text-align: right;
+}
+
+.error-list {
+  font-size: 0.85rem;
+  color: #c00;
+  padding-left: 1.25rem;
+  margin-top: 0.5rem;
+}
+
+/* ── Shared utilities ───────────────────────────────────────── */
+.primary-btn {
+  padding: 0.55rem 1.5rem;
+  font-size: 1rem;
+  background: #4a90d9;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.primary-btn:hover:not(:disabled) {
+  background: #357abd;
+}
+
+.primary-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #4a90d9;
+  cursor: pointer;
+  font-size: inherit;
+  text-decoration: underline;
+}
+
+.link-btn:disabled {
+  color: #888;
+  cursor: default;
+}
+
+.error-msg {
+  color: #c00;
+  margin-top: 0.5rem;
+}
+
+.success-msg {
+  color: #2a8a2a;
+  margin-top: 0.5rem;
+}
+
+button[type="submit"] {
+  padding: 0.5rem 1.25rem;
+  font-size: 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
   color: #646cff;
   text-decoration: inherit;
 }

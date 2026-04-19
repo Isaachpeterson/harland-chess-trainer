@@ -99,6 +99,28 @@ pub struct AnalysisProgress {
     pub status: String,
 }
 
+/// Structured progress event emitted by `full_sync` at each pipeline stage.
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncProgress {
+    /// Stage name: "fetching" | "analyzing" | "detecting" | "generating" | "complete" | "error"
+    pub stage: String,
+    /// Human-readable status message for the UI.
+    pub message: String,
+    /// Fraction complete: 0.0–1.0.
+    pub fraction: f64,
+}
+
+/// Combined result returned by the `full_sync` command.
+#[derive(Debug, Clone, Serialize)]
+pub struct FullSyncResult {
+    pub fetched: u32,
+    pub new_games: u32,
+    pub games_analyzed: u32,
+    pub total_blunders: u32,
+    pub puzzles_created: u32,
+    pub errors: Vec<String>,
+}
+
 /// Managed state: the storage handle and optional engine, initialized at startup.
 struct AppState {
     storage: storage::Storage,
@@ -984,6 +1006,468 @@ async fn get_attempts_summary(
     })
 }
 
+/// Returns the user's settings from the database.
+#[tauri::command]
+async fn get_settings(
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<storage::UserSettings, String> {
+    let guard = state.lock().await;
+    guard
+        .storage
+        .get_settings()
+        .await
+        .map_err(|e| format!("failed to load settings: {e}"))
+}
+
+/// Persists the user's settings to the database.
+#[tauri::command]
+async fn save_settings(
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+    settings: storage::UserSettings,
+) -> Result<(), String> {
+    let guard = state.lock().await;
+    guard
+        .storage
+        .save_settings(&settings)
+        .await
+        .map_err(|e| format!("failed to save settings: {e}"))
+}
+
+/// Runs the full sync pipeline: fetch → analyze → detect → generate.
+///
+/// Reads username and preferences from the stored settings. Emits `"sync-progress"` events
+/// at each stage so the frontend can show a progress bar.
+#[tauri::command]
+async fn full_sync(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<FullSyncResult, String> {
+    // --- Load settings ---
+    let settings = {
+        let guard = state.lock().await;
+        guard
+            .storage
+            .get_settings()
+            .await
+            .map_err(|e| format!("failed to load settings: {e}"))?
+    };
+
+    if settings.lichess_username.trim().is_empty() {
+        return Err(
+            "No Lichess username configured. Please set your username in Settings.".to_owned(),
+        );
+    }
+
+    let username = settings.lichess_username.trim().to_owned();
+    let max_games = settings.max_games as u32;
+    let force_stockfish = settings.use_stockfish;
+    let mut all_errors: Vec<String> = Vec::new();
+
+    // --- Stage 1: Fetch games ---
+    let _ = app.emit(
+        "sync-progress",
+        SyncProgress {
+            stage: "fetching".to_owned(),
+            message: format!("Fetching up to {max_games} games for {username}…"),
+            fraction: 0.0,
+        },
+    );
+
+    let client = lichess_client::LichessClient::new()
+        .map_err(|e| format!("failed to create Lichess client: {e}"))?;
+
+    let games = client
+        .fetch_user_games(&username, max_games)
+        .await
+        .map_err(|e| format!("failed to fetch games: {e}"))?;
+
+    let fetched = games.len() as u32;
+    let mut new_count = 0u32;
+
+    {
+        let guard = state.lock().await;
+        for game in &games {
+            let user_color = game
+                .user_color(&username)
+                .unwrap_or_else(|| "white".to_owned());
+            let user_result = game
+                .user_result(&username)
+                .unwrap_or_else(|| "draw".to_owned());
+            let time_control = game.clock.as_ref().map(|c| {
+                format!(
+                    "{}+{}",
+                    c.initial.unwrap_or(0) / 1000,
+                    c.increment.unwrap_or(0)
+                )
+            });
+            let analysis_source = if game.has_analysis() {
+                Some("lichess".to_owned())
+            } else {
+                None
+            };
+
+            let insert = storage::GameInsert {
+                id: game.id.clone(),
+                pgn: game.pgn.clone().unwrap_or_default(),
+                user_color,
+                user_result,
+                time_control,
+                rated: game.rated,
+                created_at: game.created_at / 1000,
+                analysis_source,
+            };
+
+            match guard.storage.insert_game(&insert).await {
+                Ok(outcome) => {
+                    if outcome.was_new {
+                        new_count += 1;
+                    }
+                }
+                Err(e) => {
+                    all_errors.push(format!("failed to store game {}: {e}", game.id));
+                }
+            }
+        }
+    }
+
+    // --- Stage 2: Analyze games ---
+    let _ = app.emit(
+        "sync-progress",
+        SyncProgress {
+            stage: "analyzing".to_owned(),
+            message: format!("Analyzing {fetched} games…"),
+            fraction: 0.25,
+        },
+    );
+
+    let unanalyzed = {
+        let guard = state.lock().await;
+        guard
+            .storage
+            .list_unanalyzed_games()
+            .await
+            .map_err(|e| format!("failed to list unanalyzed games: {e}"))?
+    };
+
+    let games_total = unanalyzed.len() as u32;
+    let mut games_analyzed = 0u32;
+
+    for (idx, game) in unanalyzed.iter().enumerate() {
+        let _ = app.emit(
+            "sync-progress",
+            SyncProgress {
+                stage: "analyzing".to_owned(),
+                message: format!("Analyzing game {} of {}…", idx + 1, games_total),
+                fraction: 0.25 + 0.25 * (idx as f64 / games_total.max(1) as f64),
+            },
+        );
+
+        let parsed = match chess_core::parse_pgn(&game.pgn, &game.user_color) {
+            Ok(p) if !p.is_empty() => p,
+            Ok(_) => continue,
+            Err(e) => {
+                all_errors.push(format!("game {}: PGN parse error: {e}", game.id));
+                continue;
+            }
+        };
+
+        let mut evals: Vec<storage::MoveEvaluation> = Vec::new();
+        let mut needs_engine_plies: Vec<(u32, String)> = Vec::new();
+
+        if !force_stockfish {
+            for mv in &parsed {
+                if let Some(ref eval) = mv.lichess_eval {
+                    evals.push(storage::MoveEvaluation {
+                        game_id: game.id.clone(),
+                        ply: mv.ply as i32,
+                        eval_cp: eval.eval_cp,
+                        eval_mate: eval.eval_mate,
+                        source: "lichess".to_owned(),
+                    });
+                } else {
+                    needs_engine_plies.push((mv.ply, mv.fen_after.clone()));
+                }
+            }
+        } else {
+            for mv in &parsed {
+                needs_engine_plies.push((mv.ply, mv.fen_after.clone()));
+            }
+        }
+
+        if !needs_engine_plies.is_empty() {
+            let mut guard = state.lock().await;
+            let eng = match guard.ensure_engine().await {
+                Ok(e) => e,
+                Err(e) => {
+                    all_errors.push(format!("game {}: {e}", game.id));
+                    continue;
+                }
+            };
+
+            let config = engine::AnalyzeConfig {
+                depth: Some(20),
+                movetime_ms: None,
+                multipv: 1,
+            };
+
+            let mut failed = false;
+            for (ply, fen) in &needs_engine_plies {
+                match eng.analyze(fen, &config).await {
+                    Ok(result) => {
+                        let negate = ply % 2 == 0;
+                        evals.push(storage::MoveEvaluation {
+                            game_id: game.id.clone(),
+                            ply: *ply as i32,
+                            eval_cp: result.score_cp.map(|cp| if negate { -cp } else { cp }),
+                            eval_mate: result.mate_in.map(|m| if negate { -m } else { m }),
+                            source: "stockfish".to_owned(),
+                        });
+                    }
+                    Err(e) => {
+                        all_errors.push(format!("game {} ply {ply}: engine error: {e}", game.id));
+                        failed = true;
+                        break;
+                    }
+                }
+            }
+            if failed {
+                continue;
+            }
+        }
+
+        {
+            let guard = state.lock().await;
+            let source = if needs_engine_plies.is_empty() {
+                "lichess"
+            } else {
+                "stockfish"
+            };
+            if let Err(e) = guard.storage.insert_evaluations(&game.id, &evals).await {
+                all_errors.push(format!("game {}: failed to store evals: {e}", game.id));
+                continue;
+            }
+            let _ = guard.storage.update_analysis_status(&game.id, source).await;
+        }
+
+        games_analyzed += 1;
+    }
+
+    // --- Stage 3: Detect blunders ---
+    let _ = app.emit(
+        "sync-progress",
+        SyncProgress {
+            stage: "detecting".to_owned(),
+            message: "Detecting blunders…".to_owned(),
+            fraction: 0.5,
+        },
+    );
+
+    let analyzed_games = {
+        let guard = state.lock().await;
+        guard
+            .storage
+            .list_analyzed_games()
+            .await
+            .map_err(|e| format!("failed to list analyzed games: {e}"))?
+    };
+
+    let mut total_blunders = 0u32;
+
+    for game in &analyzed_games {
+        let guard = state.lock().await;
+
+        let evals = match guard.storage.get_evaluations(&game.id).await {
+            Ok(e) if !e.is_empty() => e,
+            _ => continue,
+        };
+
+        let parsed = match chess_core::parse_pgn(&game.pgn, &game.user_color) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        let eval_by_ply: std::collections::HashMap<i32, &storage::MoveEvaluation> =
+            evals.iter().map(|e| (e.ply, e)).collect();
+
+        let user_is_white = game.user_color == "white";
+        let thresholds = chess_core::MistakeThresholds::default();
+        let mut mistake_inserts = Vec::new();
+
+        for mv in &parsed {
+            if !mv.is_user_move {
+                continue;
+            }
+            let ply = mv.ply as i32;
+            let eval_before = if ply > 0 {
+                eval_by_ply.get(&(ply - 1))
+            } else {
+                None
+            };
+            let eval_after = eval_by_ply.get(&ply);
+
+            let (before, after) = match (eval_before, eval_after) {
+                (Some(b), Some(a)) => (b, a),
+                _ => continue,
+            };
+
+            if let Some(class) = chess_core::classify_mistake(
+                before.eval_cp,
+                before.eval_mate,
+                after.eval_cp,
+                after.eval_mate,
+                user_is_white,
+                &thresholds,
+            ) {
+                let class_str = match class {
+                    chess_core::MistakeClassification::Inaccuracy => "inaccuracy",
+                    chess_core::MistakeClassification::Mistake => "mistake",
+                    chess_core::MistakeClassification::Blunder => {
+                        total_blunders += 1;
+                        "blunder"
+                    }
+                };
+                mistake_inserts.push(storage::MistakeInsert {
+                    game_id: game.id.clone(),
+                    ply,
+                    fen_before: mv.fen_before.clone(),
+                    user_move: mv.move_uci.clone(),
+                    best_move: String::new(),
+                    eval_before_cp: before.eval_cp,
+                    eval_before_mate: before.eval_mate,
+                    eval_after_cp: after.eval_cp,
+                    eval_after_mate: after.eval_mate,
+                    classification: class_str.to_owned(),
+                });
+            }
+        }
+
+        if let Err(e) = guard
+            .storage
+            .insert_mistakes(&game.id, &mistake_inserts)
+            .await
+        {
+            all_errors.push(format!("game {}: failed to store mistakes: {e}", game.id));
+        }
+    }
+
+    // --- Stage 4: Generate puzzles ---
+    let _ = app.emit(
+        "sync-progress",
+        SyncProgress {
+            stage: "generating".to_owned(),
+            message: "Generating puzzles from blunders…".to_owned(),
+            fraction: 0.75,
+        },
+    );
+
+    let blunders = {
+        let guard = state.lock().await;
+        guard
+            .storage
+            .list_blunders(10_000, 0)
+            .await
+            .map_err(|e| format!("failed to list blunders: {e}"))?
+    };
+
+    let mut puzzle_inputs = Vec::new();
+    {
+        let guard = state.lock().await;
+        for blunder in &blunders {
+            let exists = guard
+                .storage
+                .puzzle_exists_for_mistake(blunder.id)
+                .await
+                .unwrap_or(true); // skip on error
+            if exists {
+                continue;
+            }
+
+            let previous_move_uci = guard
+                .storage
+                .get_game(&blunder.game_id)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|game| {
+                    chess_core::parse_pgn(&game.pgn, &game.user_color)
+                        .ok()
+                        .and_then(|parsed| {
+                            let prev_ply = (blunder.ply - 1) as u32;
+                            parsed
+                                .iter()
+                                .find(|m| m.ply == prev_ply)
+                                .map(|m| m.move_uci.clone())
+                        })
+                });
+
+            puzzle_inputs.push(puzzle_gen::BlunderInput {
+                mistake_id: blunder.id,
+                game_id: blunder.game_id.clone(),
+                ply: blunder.ply,
+                fen_before: blunder.fen_before.clone(),
+                user_move: blunder.user_move.clone(),
+                previous_move_uci,
+            });
+        }
+    }
+
+    let mut puzzles_created = 0u32;
+
+    if !puzzle_inputs.is_empty() {
+        let results = {
+            let mut guard = state.lock().await;
+            let eng = guard.ensure_engine().await?;
+            let config = puzzle_gen::PuzzleGenConfig::default();
+            puzzle_gen::generate_puzzles(&puzzle_inputs, eng, &config).await
+        };
+
+        let guard = state.lock().await;
+        for result in results {
+            if let puzzle_gen::PuzzleGenResult::Accepted(candidate) = result {
+                let insert = storage::PuzzleInsert {
+                    mistake_id: candidate.mistake_id,
+                    fen: candidate.fen,
+                    solution_moves: serde_json::to_string(&candidate.solution_uci_moves)
+                        .unwrap_or_default(),
+                    themes: if candidate.themes.is_empty() {
+                        None
+                    } else {
+                        Some(serde_json::to_string(&candidate.themes).unwrap_or_default())
+                    },
+                };
+                if guard.storage.insert_puzzle(&insert).await.is_ok() {
+                    let _ = guard
+                        .storage
+                        .update_mistake_best_move(candidate.mistake_id, &candidate.best_move_uci)
+                        .await;
+                    puzzles_created += 1;
+                }
+            }
+        }
+    }
+
+    // --- Complete ---
+    let _ = app.emit(
+        "sync-progress",
+        SyncProgress {
+            stage: "complete".to_owned(),
+            message: format!(
+                "Done! Fetched {fetched} games, generated {puzzles_created} new puzzles."
+            ),
+            fraction: 1.0,
+        },
+    );
+
+    Ok(FullSyncResult {
+        fetched,
+        new_games: new_count,
+        games_analyzed,
+        total_blunders,
+        puzzles_created,
+        errors: all_errors,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1008,7 +1492,10 @@ pub fn run() {
             generate_puzzles,
             get_next_puzzle,
             submit_puzzle_attempt,
-            get_attempts_summary
+            get_attempts_summary,
+            get_settings,
+            save_settings,
+            full_sync
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
